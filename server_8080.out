@@ -1,0 +1,402 @@
+Dashboard → http://localhost:8080
+To share publicly:  cloudflared tunnel --url http://localhost:8080
+ * Serving Flask app 'server'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://10.0.0.208:8080
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [17/Apr/2026 10:29:47] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:03] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:03] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:03] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:03] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:03] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:03] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+127.0.0.1 - - [17/Apr/2026 10:31:05] "GET /api/architecture HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:05] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:05] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:05] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:06] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:07] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:07] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:08] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:08] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:08] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:09] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:09] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:09] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:11] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:11] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:11] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:12] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:13] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:13] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:13] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:13] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:14] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:15] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:15] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:15] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:17] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:17] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:17] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:18] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:18] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:18] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:19] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:19] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:20] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:21] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:21] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:21] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:23] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:23] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:23] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:23] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:23] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:24] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:25] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:25] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:26] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:27] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:27] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:27] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:28] "POST /api/experiment/run HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:28] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:28] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:29] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:29] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:29] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:30] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:31] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:31] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:32] "GET /api/experiment/progress HTTP/1.1" 200 -
+  [my config (seed=1)] step   0/150  loss 10.7800  lr 2.00e-05
+127.0.0.1 - - [17/Apr/2026 10:31:33] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:33] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:33] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:33] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:33] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:35] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:35] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:35] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:36] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:37] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:37] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:38] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:38] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:38] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:39] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:39] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:39] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:41] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:41] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:41] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:42] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:43] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:43] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:43] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:43] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:44] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:45] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:45] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:45] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:47] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:47] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:47] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:48] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:48] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:48] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:49] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:49] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:50] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:51] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:51] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:51] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:53] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:53] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:53] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:53] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:53] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:54] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:55] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:55] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:56] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:57] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:57] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:57] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:58] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:58] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:59] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:59] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:31:59] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:00] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:01] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:01] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:02] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:03] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:03] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:03] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:03] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:03] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:05] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:05] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:05] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:06] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:07] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:07] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:08] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:08] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:08] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:09] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:09] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:09] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:11] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:11] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:11] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:12] "[31m[1mPOST /api/experiment/run HTTP/1.1[0m" 409 -
+127.0.0.1 - - [17/Apr/2026 10:32:12] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:13] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:13] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:13] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:13] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:14] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:15] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:15] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:15] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:17] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:17] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:17] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:18] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:18] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:18] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:19] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:19] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:20] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:21] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:21] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:21] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:23] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:23] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:23] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:23] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:23] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:24] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:25] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:25] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:26] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:27] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:27] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:27] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:28] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:28] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:29] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:29] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:29] "GET /api/train/status HTTP/1.1" 200 -
+  [my config (seed=1)] step  50/150  loss 5.2215  lr 2.58e-04
+127.0.0.1 - - [17/Apr/2026 10:32:30] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:31] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:31] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:32] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:33] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:33] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:33] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:33] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:33] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:35] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:35] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:35] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:36] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:37] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:37] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:38] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:38] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:38] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:39] "POST /api/generate HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:39] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:39] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:39] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:41] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:41] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:41] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:42] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:43] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:43] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:43] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:43] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:44] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:45] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:45] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:45] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:47] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:47] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:47] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:48] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:48] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:48] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:49] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:49] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:50] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:51] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:51] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:51] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:53] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:53] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:53] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:53] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:53] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:54] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:55] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:55] "GET /api/train/status HTTP/1.1" 200 -
+[2026-04-17 10:32:56,110] ERROR in app: Exception on /api/agent [POST]
+Traceback (most recent call last):
+  File "/Users/fullfocus/Library/Python/3.12/lib/python/site-packages/flask/app.py", line 1473, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/fullfocus/Library/Python/3.12/lib/python/site-packages/flask/app.py", line 882, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/fullfocus/Library/Python/3.12/lib/python/site-packages/flask/app.py", line 880, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/fullfocus/Library/Python/3.12/lib/python/site-packages/flask/app.py", line 865, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/fullfocus/llm_training/server.py", line 215, in api_agent
+    result = get_agent().run(goal)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/fullfocus/llm_training/agent.py", line 144, in run
+    result = fn(**args)
+             ^^^^^^^^^^
+  File "/Users/fullfocus/llm_training/agent.py", line 76, in __call__
+    out = self.model.generate(ids, max_new_tokens=max_tokens,
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/fullfocus/Library/Python/3.12/lib/python/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/fullfocus/llm_training/model.py", line 274, in generate
+    logits, _ = self(ctx)
+                ^^^^^^^^^
+  File "/Users/fullfocus/Library/Python/3.12/lib/python/site-packages/torch/nn/modules/module.py", line 1776, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/fullfocus/Library/Python/3.12/lib/python/site-packages/torch/nn/modules/module.py", line 1787, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/fullfocus/llm_training/model.py", line 250, in forward
+    x = blk(x, freqs)
+        ^^^^^^^^^^^^^
+  File "/Users/fullfocus/Library/Python/3.12/lib/python/site-packages/torch/nn/modules/module.py", line 1776, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/fullfocus/Library/Python/3.12/lib/python/site-packages/torch/nn/modules/module.py", line 1787, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/fullfocus/llm_training/model.py", line 187, in forward
+    x = x + self.attn(self.attn_norm(x), freqs_cis)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/fullfocus/Library/Python/3.12/lib/python/site-packages/torch/nn/modules/module.py", line 1776, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/fullfocus/Library/Python/3.12/lib/python/site-packages/torch/nn/modules/module.py", line 1787, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/fullfocus/llm_training/model.py", line 128, in forward
+    q = apply_rope(q, freqs_cis)
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/fullfocus/llm_training/model.py", line 92, in apply_rope
+    xc = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: cannot reshape tensor of 0 elements into shape [1, 0, 8, -1, 2] because the unspecified dimension size -1 can be any value and is ambiguous
+127.0.0.1 - - [17/Apr/2026 10:32:56] "[35m[1mPOST /api/agent HTTP/1.1[0m" 500 -
+127.0.0.1 - - [17/Apr/2026 10:32:56] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:57] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:57] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:57] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:58] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:58] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:59] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:59] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:32:59] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:00] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:01] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:01] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:02] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:03] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:03] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:03] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:03] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:03] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:05] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:05] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:05] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:06] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:07] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:07] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:08] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:08] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:08] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:10] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:10] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:10] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:12] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:14] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:14] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:14] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:14] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:14] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:19] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:19] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:19] "GET /api/experiment/progress HTTP/1.1" 200 -
+  [my config (seed=1)] step 100/150  loss 5.8396  lr 1.12e-04
+127.0.0.1 - - [17/Apr/2026 10:33:23] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:23] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:24] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:24] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:24] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:33] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:33] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:33] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:33] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:33] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:39] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:39] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:39] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:39] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:39] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:57] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:57] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:57] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:57] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:33:57] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:09] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:09] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:09] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:09] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:09] "GET /api/experiment/progress HTTP/1.1" 200 -
+  [my config (seed=2)] step   0/150  loss 9.9002  lr 2.00e-05
+127.0.0.1 - - [17/Apr/2026 10:34:29] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:29] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:29] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:29] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:29] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:49] "GET /api/bench HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:49] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:49] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:49] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:49] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:55] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:55] "GET /api/train/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:55] "GET /api/experiments HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:55] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:55] "GET /api/bench HTTP/1.1" 200 -
+  [my config (seed=2)] step  50/150  loss 6.4089  lr 2.58e-04
+127.0.0.1 - - [17/Apr/2026 10:34:57] "GET /api/experiment/progress HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:57] "GET /api/log HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:34:57] "GET /api/train/status HTTP/1.1" 200 -
+  [my config (seed=2)] step 100/150  loss 5.2254  lr 1.12e-04
+  [my config (seed=3)] step   0/150  loss 10.8009  lr 2.00e-05
+  [my config (seed=3)] step  50/150  loss 6.0990  lr 2.58e-04
+  [my config (seed=3)] step 100/150  loss 5.1740  lr 1.12e-04

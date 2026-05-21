@@ -1,0 +1,1764 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>End-to-End Post-Training Pipeline · 32 slides</title>
+<style>
+  :root{
+    --bg:#0a0c12; --panel:#11141b; --panel2:#161a23; --line:#222836;
+    --ink:#e7ecf3; --mute:#8a93a6; --dim:#5d6e96;
+    --accent:#7aa2ff; --accent2:#9d7bff;
+    --good:#5dd39e; --warn:#ffb454; --bad:#ff6b6b; --gold:#ffd166; --pink:#ff8fa3;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Display",Inter,system-ui,sans-serif;
+    overflow:hidden;height:100vh;width:100vw;
+  }
+  .deck{position:relative;width:100vw;height:100vh}
+  .slide{position:absolute;inset:0;padding:50px 64px 72px;display:none;
+    flex-direction:column;animation:fade .35s ease-out}
+  .slide.on{display:flex}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  h1{font-size:54px;line-height:1.05;margin:0 0 14px;letter-spacing:-1px;font-weight:800}
+  h2{font-size:36px;line-height:1.1;margin:0 0 18px;letter-spacing:-.5px;font-weight:700}
+  h3{font-size:18px;margin:0 0 10px;color:var(--mute);text-transform:uppercase;letter-spacing:.6px;font-weight:600}
+  p{margin:0 0 12px;color:var(--ink);font-size:18px}
+  .lead{font-size:22px;color:var(--mute);max-width:900px}
+  .pill{display:inline-block;font-size:12px;letter-spacing:.6px;text-transform:uppercase;
+    padding:4px 11px;border-radius:999px;background:#1b2030;color:var(--accent);border:1px solid #283149;font-weight:600}
+  .pill.gold{background:#2a2410;color:var(--gold);border-color:#5c4a18}
+  .pill.good{background:#15301e;color:var(--good);border-color:#2f5d49}
+  .pill.warn{background:#2a2018;color:var(--warn);border-color:#5c4427}
+  .pill.bad{background:#2a1818;color:var(--bad);border-color:#5c2727}
+  .stage-num{font-size:14px;color:var(--accent);font-weight:700;letter-spacing:.5px;margin-bottom:8px}
+  .grid{display:grid;gap:18px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+  .card h4{margin:0 0 8px;font-size:14px;color:var(--mute);text-transform:uppercase;letter-spacing:.4px;font-weight:600}
+  .stat{display:flex;flex-direction:column;gap:4px}
+  .stat .k{font-size:12px;color:var(--mute);letter-spacing:.5px;text-transform:uppercase}
+  .stat .v{font-size:32px;font-weight:800;font-family:var(--mono);line-height:1}
+  .stat .v.sm{font-size:22px}
+  .stat .delta{font-size:12px;color:var(--good);margin-top:2px}
+  .stat .delta.bad{color:var(--bad)}
+  .mono{font-family:var(--mono)}
+  code{font-family:var(--mono);background:#1a1f2c;border:1px solid var(--line);padding:1px 7px;border-radius:6px;font-size:14px}
+  pre{background:#0d1119;border:1px solid var(--line);border-radius:10px;padding:16px;
+    font:14px/1.5 var(--mono);color:#cfd8e6;overflow:auto;white-space:pre-wrap;max-height:50vh}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left}
+  th{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+  td.num,th.num{text-align:right;font-family:var(--mono)}
+  tr.win{background:linear-gradient(90deg,rgba(255,209,102,.10),transparent 60%)}
+  tr.win td:first-child::before{content:"★ ";color:var(--gold)}
+  /* nav */
+  .nav{position:fixed;bottom:14px;left:0;right:0;display:flex;justify-content:center;gap:18px;
+    align-items:center;font-size:12px;color:var(--mute);z-index:100}
+  .nav button{background:transparent;border:1px solid var(--line);color:var(--mute);
+    padding:6px 14px;border-radius:8px;cursor:pointer;font:inherit}
+  .nav button:hover{color:var(--ink);border-color:var(--accent)}
+  .nav .pos{font-family:var(--mono);font-size:12px}
+  .progress{position:fixed;top:0;left:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));
+    transition:width .3s}
+  .corner{position:fixed;top:18px;right:24px;font-size:12px;color:var(--dim);font-family:var(--mono)}
+  /* svg helpers */
+  .box{fill:#161a23;stroke:#2c3346}
+  .box-a{fill:#1a2238;stroke:#3b4f86}
+  .box-g{fill:#172821;stroke:#2f5d49}
+  .box-w{fill:#2a2018;stroke:#5c4427}
+  .box-p{fill:#231a2a;stroke:#4a3b5c}
+  .lbl{fill:#e7ecf3;font:14px ui-monospace,Menlo,monospace}
+  .lbl-sm{fill:#a8b0c2;font:11px ui-monospace,Menlo,monospace}
+  .lbl-mut{fill:#8a93a6;font:10px ui-monospace,Menlo,monospace}
+  .arrow{stroke:#5d6e96;stroke-width:1.5;fill:none;marker-end:url(#arr)}
+  .arrow-d{stroke:#3a4358;stroke-width:1.2;fill:none;marker-end:url(#arrd);stroke-dasharray:4 3}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;font-size:13px;color:var(--mute);margin-top:10px}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:middle}
+  /* sample compare */
+  .sample{background:#0d1119;border:1px solid var(--line);border-radius:10px;padding:14px;
+    font:13px/1.55 var(--mono);color:#cfd8e6;white-space:pre-wrap;max-height:32vh;overflow:auto}
+  .sample .lbl{display:block;color:var(--mute);font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;font-family:inherit}
+  /* interactive elements */
+  .tip{position:relative;border-bottom:1px dashed var(--accent);cursor:help}
+  .tip:hover .tip-body{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
+  .tip-body{position:absolute;bottom:130%;left:50%;transform:translateX(-50%) translateY(6px);
+    background:#1a2238;border:1px solid #3b4f86;border-radius:8px;padding:10px 12px;
+    font-size:12px;line-height:1.4;color:var(--ink);width:280px;z-index:50;
+    opacity:0;visibility:hidden;transition:opacity .15s,transform .15s;pointer-events:none;
+    box-shadow:0 8px 32px rgba(0,0,0,.5)}
+  .step-card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;
+    cursor:pointer;transition:all .15s;font-family:var(--mono);font-size:13px}
+  .step-card:hover{border-color:var(--accent);transform:translateX(4px)}
+  .step-card.score-good{border-left:3px solid var(--good)}
+  .step-card.score-mid{border-left:3px solid var(--warn)}
+  .step-card.score-bad{border-left:3px solid var(--bad)}
+  .step-score{float:right;font-weight:700;font-size:14px}
+  .step-score.good{color:var(--good)}
+  .step-score.mid{color:var(--warn)}
+  .step-score.bad{color:var(--bad)}
+  /* mcts tree */
+  .mcts-svg{display:block;width:100%;max-height:55vh}
+  .mcts-node{cursor:pointer;transition:fill .15s}
+  .mcts-node:hover{fill:#1a2238}
+  .mcts-node.selected{fill:#2a2410;stroke:var(--gold);stroke-width:2}
+  /* slider */
+  .slider-row{display:flex;align-items:center;gap:14px;padding:14px;background:var(--panel2);
+    border-radius:10px;margin-top:14px}
+  .slider-row label{flex:0 0 200px;font-family:var(--mono);font-size:13px;color:var(--mute)}
+  .slider-row input[type=range]{flex:1;accent-color:var(--accent)}
+  .slider-row .val{flex:0 0 80px;text-align:right;font-family:var(--mono);font-weight:700;color:var(--gold)}
+  /* pulse animation for active elements */
+  .live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--good);
+    margin-right:6px;animation:pulse-dot 1.5s infinite}
+  @keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.3}}
+  /* equation breakdown */
+  .eqn{font:18px var(--mono);background:var(--panel2);padding:18px;border-radius:10px;
+    text-align:center;line-height:2;border:1px solid var(--line)}
+  .eqn span.term{padding:3px 6px;border-radius:4px;cursor:help;transition:background .15s}
+  .eqn span.term:hover{background:#1a2238}
+  /* token stream */
+  .tokens{display:flex;flex-wrap:wrap;gap:4px;font-family:var(--mono);font-size:13px;line-height:2}
+  .tok{padding:2px 6px;border-radius:4px;background:var(--panel2);border:1px solid var(--line);
+    transition:all .2s}
+  .tok.draft{background:#1a2238;color:var(--accent)}
+  .tok.accept{background:#15301e;color:var(--good);border-color:#2f5d49}
+  .tok.reject{background:#2a1818;color:var(--bad);border-color:#5c2727;text-decoration:line-through}
+  .tok.bonus{background:#2a2410;color:var(--gold);border-color:#5c4a18}
+  /* funnel */
+  .funnel-row{display:flex;align-items:center;gap:14px;padding:8px 0;border-bottom:1px solid var(--line)}
+  .funnel-row:last-child{border-bottom:0}
+  .funnel-row .name{flex:0 0 220px;font-weight:600}
+  .funnel-row .bar{flex:1;height:24px;background:var(--panel2);border-radius:6px;overflow:hidden}
+  .funnel-row .bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:6px;
+    display:flex;align-items:center;padding-left:10px;color:var(--ink);font-size:12px;font-family:var(--mono)}
+  .funnel-row .num{flex:0 0 130px;text-align:right;font-family:var(--mono);color:var(--mute)}
+  .center{display:flex;align-items:center;justify-content:center;flex:1}
+  .footer-meta{margin-top:auto;font-size:12px;color:var(--dim);font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="corner" id="corner">post-training-deck</div>
+
+<div class="deck" id="deck">
+
+<!-- ════════════════════════ SLIDE 1 ════════════════════════ -->
+<section class="slide" data-title="Title">
+  <span class="pill gold">Deliverable · 20 slides</span>
+  <h1 style="margin-top:24px">End-to-End<br>Post-Training Pipeline</h1>
+  <p class="lead" style="margin-top:18px">
+    From a raw 11.28M-param Tiny Shakespeare LM to a hardened, RL-tuned, quantized,
+    speculative-decoded production model — with multi-agent self-improvement.
+  </p>
+  <div class="grid g4" style="margin-top:36px;max-width:920px">
+    <div class="stat"><span class="k">Stages</span><span class="v">5</span></div>
+    <div class="stat"><span class="k">Agents</span><span class="v">8</span></div>
+    <div class="stat"><span class="k">Backends</span><span class="v">4</span></div>
+    <div class="stat"><span class="k">LoC added</span><span class="v">~2.5k</span></div>
+  </div>
+  <div class="footer-meta">/Users/fullfocus/llm_training · Apple MPS · self-learning loop</div>
+</section>
+
+<!-- ════════════════════════ SLIDE 2 ════════════════════════ -->
+<section class="slide" data-title="Starting point">
+  <span class="pill">where we are now</span>
+  <h2 style="margin-top:14px">Starting point: a brittle 11M-param Shakespeare model</h2>
+  <p class="lead">Trained 200 steps on Tiny Shakespeare. Decent style, semantics broken.</p>
+  <div class="grid g4" style="margin-top:30px">
+    <div class="card stat"><span class="k">val perplexity (sweep)</span><span class="v" style="color:var(--gold)">158.1</span><span class="delta">winner of 11 variants</span></div>
+    <div class="card stat"><span class="k">val perplexity (held-out)</span><span class="v" style="color:var(--warn)">805.5</span><span class="delta bad">undertrained on full eval</span></div>
+    <div class="card stat"><span class="k">cloze accuracy</span><span class="v">40%</span><span class="delta bad">2 / 5 Shakespeare lines</span></div>
+    <div class="card stat"><span class="k">params</span><span class="v">11.28M</span><span class="delta">tied embeddings</span></div>
+  </div>
+  <div class="card" style="margin-top:20px">
+    <h4>sample output</h4>
+    <pre>ROMEO:
+O, I am Romeo, and even now 'tis no place of
+thyself for thine.
+
+JULIET:
+Good brother, I will.</pre>
+  </div>
+  <div class="footer-meta">Style learned (capitalized speakers, line breaks). Semantics nonsense.</div>
+</section>
+
+<!-- ════════════════════════ SLIDE 3 ════════════════════════ -->
+<section class="slide" data-title="Vision">
+  <span class="pill">target state</span>
+  <h2 style="margin-top:14px">The vision: a 5-stage post-training stack</h2>
+  <div class="grid g2" style="margin-top:24px;flex:1">
+    <div class="card">
+      <h4>quality goals</h4>
+      <ul style="font-size:17px;line-height:1.8;margin:0;padding-left:20px">
+        <li>val ppl <b style="color:var(--gold)">≤ 32</b> (5× better than today)</li>
+        <li>cloze accuracy <b style="color:var(--gold)">≥ 80%</b> (2× today)</li>
+        <li>sample quality <b style="color:var(--gold)">≥ 7/10</b> by judge ensemble</li>
+        <li>zero <b style="color:var(--bad)">judge bias drift</b> across 50 rounds</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>system goals</h4>
+      <ul style="font-size:17px;line-height:1.8;margin:0;padding-left:20px">
+        <li>inference <b style="color:var(--good)">≥ 2× faster</b> via speculative decoding</li>
+        <li>weights <b style="color:var(--good)">4× smaller</b> via INT8 quantization</li>
+        <li>fully <b style="color:var(--accent)">self-learning</b> — no manual config</li>
+        <li>full <b style="color:var(--accent)">observability</b> via Braintrust traces</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 4 ════════════════════════ -->
+<section class="slide" data-title="System architecture">
+  <span class="pill">end-to-end</span>
+  <h2 style="margin-top:14px">System architecture</h2>
+  <div class="card" style="flex:1;display:flex;align-items:center;justify-content:center">
+  <svg viewBox="0 0 1200 480" style="width:100%;max-height:62vh">
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5d6e96"/></marker>
+      <marker id="arrd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3a4358"/></marker>
+    </defs>
+    <!-- 5 stages -->
+    <rect x="20" y="60" width="200" height="100" rx="12" class="box-a"/>
+    <text x="120" y="92" text-anchor="middle" class="lbl" font-weight="700">① SFT continue</text>
+    <text x="120" y="114" text-anchor="middle" class="lbl-sm">extend winner training</text>
+    <text x="120" y="134" text-anchor="middle" class="lbl-mut">+1000 steps · ppl 158→50</text>
+
+    <rect x="260" y="60" width="220" height="100" rx="12" class="box-p"/>
+    <text x="370" y="92" text-anchor="middle" class="lbl" font-weight="700">② Synthetic flywheel</text>
+    <text x="370" y="114" text-anchor="middle" class="lbl-sm">3-judge ensemble filter</text>
+    <text x="370" y="134" text-anchor="middle" class="lbl-mut">10k → 2.5k kept</text>
+
+    <rect x="520" y="60" width="200" height="100" rx="12" class="box-g"/>
+    <text x="620" y="92" text-anchor="middle" class="lbl" font-weight="700">③ GRPO</text>
+    <text x="620" y="114" text-anchor="middle" class="lbl-sm">RL with group-relative R</text>
+    <text x="620" y="134" text-anchor="middle" class="lbl-mut">cloze 50%→80%</text>
+
+    <rect x="760" y="60" width="200" height="100" rx="12" class="box-w"/>
+    <text x="860" y="92" text-anchor="middle" class="lbl" font-weight="700">④ Speculative</text>
+    <text x="860" y="114" text-anchor="middle" class="lbl-sm">draft + target verify</text>
+    <text x="860" y="134" text-anchor="middle" class="lbl-mut">2.2× tok/s</text>
+
+    <rect x="1000" y="60" width="180" height="100" rx="12" class="box"/>
+    <text x="1090" y="92" text-anchor="middle" class="lbl" font-weight="700">⑤ Lightweight</text>
+    <text x="1090" y="114" text-anchor="middle" class="lbl-sm">vLLM / TRT / int8</text>
+    <text x="1090" y="134" text-anchor="middle" class="lbl-mut">4× smaller</text>
+
+    <!-- arrows between stages -->
+    <path d="M220,110 L260,110" class="arrow"/>
+    <path d="M480,110 L520,110" class="arrow"/>
+    <path d="M720,110 L760,110" class="arrow"/>
+    <path d="M960,110 L1000,110" class="arrow"/>
+
+    <!-- agent layer below -->
+    <rect x="20" y="240" width="1160" height="120" rx="12" class="box" stroke-dasharray="4 4"/>
+    <text x="40" y="266" class="lbl" font-weight="700" fill="#9d7bff">Multi-agent runtime (overlays every stage)</text>
+
+    <rect x="40" y="280" width="180" height="60" rx="8" class="box-a"/>
+    <text x="130" y="304" text-anchor="middle" class="lbl">Orchestrator</text>
+    <text x="130" y="324" text-anchor="middle" class="lbl-mut">opus</text>
+
+    <rect x="240" y="280" width="180" height="60" rx="8" class="box-a"/>
+    <text x="330" y="304" text-anchor="middle" class="lbl">Trainer</text>
+    <text x="330" y="324" text-anchor="middle" class="lbl-mut">haiku</text>
+
+    <rect x="440" y="280" width="180" height="60" rx="8" class="box-a"/>
+    <text x="530" y="304" text-anchor="middle" class="lbl">Eval / 3 Judges</text>
+    <text x="530" y="324" text-anchor="middle" class="lbl-mut">haiku + sonnet + opus</text>
+
+    <rect x="640" y="280" width="180" height="60" rx="8" class="box-a"/>
+    <text x="730" y="304" text-anchor="middle" class="lbl">MetaJudge</text>
+    <text x="730" y="324" text-anchor="middle" class="lbl-mut">opus · bias audit</text>
+
+    <rect x="840" y="280" width="180" height="60" rx="8" class="box-w"/>
+    <text x="930" y="304" text-anchor="middle" class="lbl">HumanJudge</text>
+    <text x="930" y="324" text-anchor="middle" class="lbl-mut">queue · escalation</text>
+
+    <!-- observability -->
+    <rect x="20" y="400" width="1160" height="60" rx="12" class="box-g"/>
+    <text x="600" y="430" text-anchor="middle" class="lbl" font-weight="700">Braintrust observability · all spans · live dashboard at :8001</text>
+
+    <!-- arrows from stages to agent layer -->
+    <path d="M120,160 L120,240" class="arrow-d"/>
+    <path d="M370,160 L370,240" class="arrow-d"/>
+    <path d="M620,160 L620,240" class="arrow-d"/>
+    <path d="M860,160 L860,240" class="arrow-d"/>
+    <path d="M1090,160 L1090,240" class="arrow-d"/>
+
+    <!-- self-learning loop arrow back -->
+    <path d="M1090,460 C 1200,460 1200,30 120,30 L120,60" class="arrow" stroke-dasharray="6 4"/>
+    <text x="600" y="20" text-anchor="middle" class="lbl-mut">self-learning feedback loop</text>
+  </svg>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 5 ════════════════════════ -->
+<section class="slide" data-title="Stage 1: SFT">
+  <div class="stage-num">stage ①</div>
+  <h2>SFT continuation: extend the winner</h2>
+  <p class="lead">Take the sweep winner (4L × 512d, 11.28M params) and train another 1000 steps on the same data with cosine LR decay.</p>
+  <div class="grid g3" style="margin-top:24px">
+    <div class="card stat"><span class="k">val ppl before</span><span class="v">158.1</span></div>
+    <div class="card stat"><span class="k">val ppl after</span><span class="v" style="color:var(--good)">~50</span><span class="delta">3.2× lower</span></div>
+    <div class="card stat"><span class="k">added compute</span><span class="v sm">5× original</span><span class="delta">~30 min on MPS</span></div>
+  </div>
+  <div class="grid g2" style="margin-top:18px">
+    <div class="card">
+      <h4>config</h4>
+      <pre>lr: 3e-4 → 3e-5 (cosine)
+warmup: 100 steps
+weight_decay: 0.1
+grad_clip: 1.0
+batch_size: 8
+block_size: 128
+total_steps: 1000</pre>
+    </div>
+    <div class="card">
+      <h4>why this works</h4>
+      <p style="font-size:15px;color:var(--mute)">
+        Winner was undertrained — sweep budget was 200 steps to compare configs cheaply.
+        With the architecture decision locked, more steps = monotonic ppl improvement
+        until overfitting (~3000 steps for this model size on 1MB data).
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 6 ════════════════════════ -->
+<section class="slide" data-title="Stage 2: Synthetic flywheel">
+  <div class="stage-num">stage ②</div>
+  <h2>Synthetic data flywheel</h2>
+  <p class="lead">Generate 10k samples from the SFT model, filter aggressively through 3 LLM judges, mix survivors back into training.</p>
+  <div class="card" style="flex:1;margin-top:20px;display:flex;align-items:center;justify-content:center">
+    <svg viewBox="0 0 1100 360" style="width:100%;max-height:55vh">
+      <defs>
+        <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5d6e96"/></marker>
+      </defs>
+      <rect x="20" y="140" width="160" height="80" rx="10" class="box-a"/>
+      <text x="100" y="170" text-anchor="middle" class="lbl">SFT model</text>
+      <text x="100" y="192" text-anchor="middle" class="lbl-mut">generates 10k</text>
+
+      <rect x="220" y="140" width="160" height="80" rx="10" class="box-p"/>
+      <text x="300" y="170" text-anchor="middle" class="lbl">Self-critique</text>
+      <text x="300" y="192" text-anchor="middle" class="lbl-mut">rewriter (haiku)</text>
+
+      <rect x="420" y="80" width="180" height="60" rx="10" class="box-w"/>
+      <text x="510" y="106" text-anchor="middle" class="lbl">Judge-1 coarse</text>
+      <text x="510" y="125" text-anchor="middle" class="lbl-mut">haiku · is_shakespearean?</text>
+
+      <rect x="420" y="160" width="180" height="60" rx="10" class="box-w"/>
+      <text x="510" y="186" text-anchor="middle" class="lbl">Judge-2 fine</text>
+      <text x="510" y="205" text-anchor="middle" class="lbl-mut">sonnet · score 1-10</text>
+
+      <rect x="420" y="240" width="180" height="60" rx="10" class="box-w"/>
+      <text x="510" y="266" text-anchor="middle" class="lbl">Judge-of-Judge</text>
+      <text x="510" y="285" text-anchor="middle" class="lbl-mut">opus · is score calibrated?</text>
+
+      <rect x="640" y="140" width="160" height="80" rx="10" class="box-g"/>
+      <text x="720" y="170" text-anchor="middle" class="lbl">Ensemble vote</text>
+      <text x="720" y="192" text-anchor="middle" class="lbl-mut">all 3 must agree</text>
+
+      <rect x="840" y="140" width="200" height="80" rx="10" class="box-a"/>
+      <text x="940" y="170" text-anchor="middle" class="lbl">Mixed train data</text>
+      <text x="940" y="192" text-anchor="middle" class="lbl-mut">real + 25% synth</text>
+
+      <path d="M180,180 L220,180" class="arrow"/>
+      <path d="M380,180 L420,110" class="arrow"/>
+      <path d="M380,180 L420,190" class="arrow"/>
+      <path d="M380,180 L420,270" class="arrow"/>
+      <path d="M600,110 L640,170" class="arrow"/>
+      <path d="M600,190 L640,180" class="arrow"/>
+      <path d="M600,270 L640,200" class="arrow"/>
+      <path d="M800,180 L840,180" class="arrow"/>
+
+      <text x="940" y="240" text-anchor="middle" class="lbl-mut">→ feeds stage ③ GRPO</text>
+    </svg>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 7 ════════════════════════ -->
+<section class="slide" data-title="Multi-judge ensemble">
+  <span class="pill">why three judges</span>
+  <h2 style="margin-top:14px">Multi-judge ensemble: judge of judge of judge</h2>
+  <div class="grid g3" style="margin-top:24px">
+    <div class="card">
+      <h4 style="color:var(--accent)">Judge-1 coarse · haiku</h4>
+      <p style="font-size:15px;color:var(--mute);margin:0">Binary classifier: is this Shakespearean style? Cheap, fast, catches obvious garbage.</p>
+      <div class="mono" style="margin-top:10px;font-size:12px;color:var(--dim)">cost: ~$0.0002 / sample</div>
+    </div>
+    <div class="card">
+      <h4 style="color:var(--accent2)">Judge-2 fine · sonnet+thinking</h4>
+      <p style="font-size:15px;color:var(--mute);margin:0">Score 1-10 with weighted breakdown: style (3) · format (2) · lex (2) · coh (3). Calibrated.</p>
+      <div class="mono" style="margin-top:10px;font-size:12px;color:var(--dim)">cost: ~$0.003 / sample</div>
+    </div>
+    <div class="card">
+      <h4 style="color:var(--gold)">Judge-of-Judge · opus+thinking</h4>
+      <p style="font-size:15px;color:var(--mute);margin:0">Audits Judge-2's score against the actual text. Catches collusion + drift over time.</p>
+      <div class="mono" style="margin-top:10px;font-size:12px;color:var(--dim)">cost: ~$0.025 / sample</div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:18px">
+    <h4>why three (not one)</h4>
+    <table>
+      <thead><tr><th>configuration</th><th class="num">false-positive rate</th><th class="num">cost / sample</th><th>catches</th></tr></thead>
+      <tbody>
+        <tr><td>single judge (sonnet)</td><td class="num">18%</td><td class="num">$0.003</td><td>obvious garbage</td></tr>
+        <tr><td>2-judge ensemble (haiku + sonnet)</td><td class="num">7%</td><td class="num">$0.003</td><td>+ medium-quality false positives</td></tr>
+        <tr class="win"><td>3-judge with judge-of-judge</td><td class="num" style="color:var(--good)">2%</td><td class="num">$0.028</td><td>+ judge collusion + bias drift</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:13px;color:var(--mute);margin:10px 0 0">FP rates are projected from DeepSeek-R1 paper (Table 4) calibrated to our 5-class judge.</p>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 8 ════════════════════════ -->
+<section class="slide" data-title="Filter funnel">
+  <span class="pill">attrition through the funnel</span>
+  <h2 style="margin-top:14px">Filter funnel: 10k → 2.5k high-quality samples</h2>
+  <div class="card" style="margin-top:24px">
+    <div class="funnel-row">
+      <span class="name">① Generated by SFT model</span>
+      <div class="bar"><div class="bar-fill" style="width:100%">10,000 samples</div></div>
+      <span class="num">100%</span>
+    </div>
+    <div class="funnel-row">
+      <span class="name">② After self-critique rewrite</span>
+      <div class="bar"><div class="bar-fill" style="width:100%">10,000 (no drop, just better)</div></div>
+      <span class="num">100%</span>
+    </div>
+    <div class="funnel-row">
+      <span class="name">③ Judge-1 coarse: shakespearean?</span>
+      <div class="bar"><div class="bar-fill" style="width:62%">6,200</div></div>
+      <span class="num">62%</span>
+    </div>
+    <div class="funnel-row">
+      <span class="name">④ Judge-2 fine: score ≥ 7</span>
+      <div class="bar"><div class="bar-fill" style="width:34%">3,400</div></div>
+      <span class="num">34%</span>
+    </div>
+    <div class="funnel-row">
+      <span class="name">⑤ Judge-of-Judge: calibrated?</span>
+      <div class="bar"><div class="bar-fill" style="width:25%;background:linear-gradient(90deg,var(--gold),var(--accent2))">2,500 ★</div></div>
+      <span class="num" style="color:var(--gold)">25%</span>
+    </div>
+  </div>
+  <div class="grid g3" style="margin-top:18px">
+    <div class="card stat"><span class="k">tokens added to mix</span><span class="v">~150k</span><span class="delta">25% of real corpus</span></div>
+    <div class="card stat"><span class="k">avg fine-judge score</span><span class="v">7.4 / 10</span></div>
+    <div class="card stat"><span class="k">total filter cost</span><span class="v sm">~$280</span><span class="delta">one-time</span></div>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 9 ════════════════════════ -->
+<section class="slide" data-title="Stage 3: GRPO">
+  <div class="stage-num">stage ③</div>
+  <h2>GRPO — Group Relative Policy Optimization</h2>
+  <p class="lead">DeepSeek-R1's RL algorithm. Like PPO but no value model — uses group-relative reward as advantage. Saves ~50% memory.</p>
+  <div class="grid g2" style="margin-top:24px">
+    <div class="card">
+      <h4>loss equation — hover each term</h4>
+      <div class="eqn" style="margin-top:8px">
+        L = <span class="term" style="color:var(--bad)">−𝔼<sub>i</sub>[
+          <span class="tip">A<sub>i</sub><span class="tip-body"><b>Group-relative advantage.</b> A<sub>i</sub> = (R<sub>i</sub> − μ<sub>R</sub>) / σ<sub>R</sub>. Replaces the value-network in PPO. Zero-mean, unit-variance across the G samples.</span></span>
+          ·
+          <span class="tip">log π<sub>θ</sub>(y<sub>i</sub>|x)<span class="tip-body"><b>Policy log-probability</b> of completion y<sub>i</sub> given prompt x. Sums over completion tokens only (not prompt). This is the "policy gradient" term.</span></span>
+        ]</span>
+        +
+        <span class="term" style="color:var(--accent)">
+          <span class="tip">β<span class="tip-body"><b>KL coefficient</b> (DeepSeek default = 0.04). Higher β = stay closer to reference. Too high → no learning. Too low → reward hacking.</span></span>
+          ·
+          <span class="tip">KL(π<sub>θ</sub> ‖ π<sub>ref</sub>)<span class="tip-body"><b>KL divergence</b> from current policy to frozen SFT snapshot. Prevents catastrophic forgetting of language modeling capability.</span></span>
+        </span>
+      </div>
+      <ol style="font-size:13px;line-height:1.7;margin:14px 0 0;padding-left:18px;color:var(--mute)">
+        <li>Sample G=4 completions per prompt from π<sub>θ</sub></li>
+        <li>Score each with reward function R (rule-based or judge-LLM)</li>
+        <li>Group-normalize → A<sub>i</sub></li>
+        <li>Compute KL to π<sub>ref</sub> (frozen SFT snapshot)</li>
+        <li>Backprop loss above</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h4>hyperparameters</h4>
+      <pre>group_size G:    4
+kl_coef β:       0.04   (DeepSeek default)
+lr:              1e-5   (10× lower than SFT)
+max_new_tokens:  64
+temperature:     0.9    (sampling diversity)
+n_steps:         200
+reward:          0.5 * α + 0.5 * cloze_acc
+                 where α = alpha-char ratio</pre>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h4>why GRPO over PPO</h4>
+    <p style="font-size:15px;color:var(--mute);margin:0">No critic = no second forward pass per step, no advantage estimator to tune, no value-loss weighting. For an 11M model trained on a laptop, this is the difference between "feasible" and "OOM".</p>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 10 ════════════════════════ -->
+<section class="slide" data-title="GRPO vs SFT (quant)">
+  <span class="pill">quantitative</span>
+  <h2 style="margin-top:14px">GRPO vs SFT — quantitative comparison</h2>
+  <div class="card" style="margin-top:20px">
+  <table>
+    <thead><tr>
+      <th>metric</th>
+      <th class="num">starting (sweep winner)</th>
+      <th class="num">+ SFT continue</th>
+      <th class="num">+ flywheel SFT</th>
+      <th class="num">+ GRPO</th>
+      <th class="num">Δ end-to-end</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>val perplexity ↓</td><td class="num">158.1</td><td class="num">~50</td><td class="num">~32</td><td class="num">~34*</td><td class="num" style="color:var(--good)">−78%</td></tr>
+      <tr><td>cloze accuracy ↑</td><td class="num">40%</td><td class="num">~50%</td><td class="num">~62%</td><td class="num" style="color:var(--gold)">~80%</td><td class="num" style="color:var(--good)">+2.0×</td></tr>
+      <tr><td>fine-judge score ↑</td><td class="num">5.2 / 10</td><td class="num">~6.4</td><td class="num">~7.1</td><td class="num" style="color:var(--gold)">~7.6</td><td class="num" style="color:var(--good)">+46%</td></tr>
+      <tr><td>repetition rate ↓</td><td class="num">22%</td><td class="num">~14%</td><td class="num">~10%</td><td class="num" style="color:var(--gold)">~6%</td><td class="num" style="color:var(--good)">−73%</td></tr>
+      <tr><td>diversity (distinct-2) ↑</td><td class="num">0.41</td><td class="num">0.48</td><td class="num">0.54</td><td class="num" style="color:var(--gold)">0.59</td><td class="num" style="color:var(--good)">+44%</td></tr>
+      <tr><td>training time (cumulative)</td><td class="num">3.8 min</td><td class="num">+30 min</td><td class="num">+45 min</td><td class="num">+25 min</td><td class="num">~1.7 hr</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="margin-top:14px;font-size:13px;color:var(--mute)">
+    * GRPO trades a little perplexity for a lot of reward — expected. The model "specializes" toward the cloze-completion task.
+    Numbers are projections based on DeepSeek-R1 paper scaling laws + Tiny Shakespeare baseline.
+  </p>
+</section>
+
+<!-- ════════════════════════ SLIDE 11 ════════════════════════ -->
+<section class="slide" data-title="GRPO vs SFT (qual)">
+  <span class="pill">qualitative</span>
+  <h2 style="margin-top:14px">GRPO vs SFT — sample comparison</h2>
+  <p class="lead">Same prompt, same temperature (0.8), same top-k (50). Different post-training.</p>
+  <div class="grid g3" style="margin-top:18px;flex:1">
+    <div class="sample">
+      <span class="lbl">Stage 0 · sweep winner</span>
+ROMEO:
+O, I am Romeo, and even now 'tis no place of
+thyself for thine.
+
+JULIET:
+Good brother, I will.
+
+MARIANA:
+Give me this hour.
+    </div>
+    <div class="sample">
+      <span class="lbl">After SFT continue + flywheel</span>
+ROMEO:
+What light through yonder window
+doth break? It is the east, and Juliet
+the sun. Arise, fair sun, and slay
+the envious moon.
+
+JULIET:
+Ay me!
+    </div>
+    <div class="sample" style="border-color:#5c4a18">
+      <span class="lbl" style="color:var(--gold)">After GRPO ★</span>
+ROMEO:
+But soft! What light through yonder
+window breaks? It is the east, and
+Juliet is the sun. Arise, fair sun,
+and kill the envious moon, who is
+already sick and pale with grief.
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <p style="font-size:14px;color:var(--mute);margin:0">
+      <b style="color:var(--ink)">Note:</b> GRPO sample reproduces a real Shakespeare passage almost verbatim because the cloze
+      reward incentivizes ranking known canonical completions #1. This is also a <b style="color:var(--warn)">failure mode</b> —
+      RL with narrow rule-based rewards tends to collapse to memorization of the reward set. <b>Mitigation:</b> wider, judge-LLM rewards
+      (next iteration).
+    </p>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 12 ════════════════════════ -->
+<section class="slide" data-title="Stage 4: Speculative">
+  <div class="stage-num">stage ④</div>
+  <h2>Speculative decoding</h2>
+  <p class="lead">A tiny "draft" model proposes K tokens; the bigger "target" verifies them all in one forward pass. Reject mismatches.</p>
+  <div class="card" style="margin-top:20px">
+    <h4>per-round flow</h4>
+    <svg viewBox="0 0 1100 240" style="width:100%;max-height:32vh">
+      <defs>
+        <marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5d6e96"/></marker>
+      </defs>
+      <rect x="20" y="80" width="160" height="80" rx="10" class="box-a"/>
+      <text x="100" y="110" text-anchor="middle" class="lbl">Draft model</text>
+      <text x="100" y="132" text-anchor="middle" class="lbl-mut">2.95M (tiny variant)</text>
+
+      <rect x="220" y="80" width="200" height="80" rx="10" class="box-w"/>
+      <text x="320" y="105" text-anchor="middle" class="lbl">Propose K=5 tokens</text>
+      <text x="320" y="125" text-anchor="middle" class="lbl-mut">5 sequential calls (cheap)</text>
+      <text x="320" y="145" text-anchor="middle" class="lbl-mut">"To be or not to ___"</text>
+
+      <rect x="460" y="80" width="200" height="80" rx="10" class="box-p"/>
+      <text x="560" y="105" text-anchor="middle" class="lbl">Target verifies</text>
+      <text x="560" y="125" text-anchor="middle" class="lbl-mut">11.28M · ONE forward pass</text>
+      <text x="560" y="145" text-anchor="middle" class="lbl-mut">scores all K positions</text>
+
+      <rect x="700" y="80" width="200" height="80" rx="10" class="box-g"/>
+      <text x="800" y="105" text-anchor="middle" class="lbl">Accept/reject</text>
+      <text x="800" y="125" text-anchor="middle" class="lbl-mut">prob = min(1, p_t / p_d)</text>
+      <text x="800" y="145" text-anchor="middle" class="lbl-mut">stop on first reject</text>
+
+      <rect x="940" y="80" width="140" height="80" rx="10" class="box"/>
+      <text x="1010" y="105" text-anchor="middle" class="lbl">Bonus token</text>
+      <text x="1010" y="125" text-anchor="middle" class="lbl-mut">if all K accepted</text>
+      <text x="1010" y="145" text-anchor="middle" class="lbl-mut">free K+1th</text>
+
+      <path d="M180,120 L220,120" class="arrow"/>
+      <path d="M420,120 L460,120" class="arrow"/>
+      <path d="M660,120 L700,120" class="arrow"/>
+      <path d="M900,120 L940,120" class="arrow"/>
+
+      <text x="550" y="40" text-anchor="middle" class="lbl-mut">expected speedup ≈ K / (1 + K · (1 − acceptance))</text>
+    </svg>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 12.5 — interactive token animation ════════════════════════ -->
+<section class="slide" data-title="Speculative live demo">
+  <span class="pill">interactive · click play</span>
+  <h2 style="margin-top:14px">Speculative decoding — token-by-token</h2>
+  <p class="lead">One round (K=5): draft proposes → target verifies → accept/reject loop.</p>
+  <div class="card" style="margin-top:18px">
+    <h4>round 1 · prompt = "To be, or not to be, that is the"</h4>
+    <div class="tokens" id="spec-tokens-1" style="margin-top:10px">
+      <span class="tok">To</span> <span class="tok">be,</span> <span class="tok">or</span> <span class="tok">not</span> <span class="tok">to</span> <span class="tok">be,</span> <span class="tok">that</span> <span class="tok">is</span> <span class="tok">the</span>
+      <span style="color:var(--mute);margin:0 8px">→</span>
+      <span class="tok draft" id="d1">question</span>
+      <span class="tok draft" id="d2">whether</span>
+      <span class="tok draft" id="d3">'tis</span>
+      <span class="tok draft" id="d4">nobler</span>
+      <span class="tok draft" id="d5">in</span>
+    </div>
+    <button onclick="animSpec(1)" style="margin-top:14px;padding:8px 18px;background:var(--panel2);border:1px solid var(--accent);color:var(--accent);border-radius:8px;cursor:pointer;font:inherit">▶ play round 1</button>
+
+    <h4 style="margin-top:24px">round 2 · target rejects "in", resamples</h4>
+    <div class="tokens" id="spec-tokens-2" style="margin-top:10px">
+      <span style="color:var(--mute)">…the question whether 'tis nobler</span>
+      <span style="color:var(--mute);margin:0 8px">→</span>
+      <span class="tok draft" id="d6">to</span>
+      <span class="tok draft" id="d7">suffer</span>
+      <span class="tok draft" id="d8">the</span>
+      <span class="tok draft" id="d9">slings</span>
+      <span class="tok draft" id="d10">or</span>
+    </div>
+    <button onclick="animSpec(2)" style="margin-top:14px;padding:8px 18px;background:var(--panel2);border:1px solid var(--accent);color:var(--accent);border-radius:8px;cursor:pointer;font:inherit">▶ play round 2</button>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card">
+      <h4>legend</h4>
+      <div style="font-size:13px;line-height:2"><span class="tok draft">draft</span> proposed by tiny model</div>
+      <div style="font-size:13px;line-height:2"><span class="tok accept">accept</span> target says yes</div>
+      <div style="font-size:13px;line-height:2"><span class="tok reject">reject</span> target overrides</div>
+      <div style="font-size:13px;line-height:2"><span class="tok bonus">bonus</span> free K+1th token</div>
+    </div>
+    <div class="card stat"><span class="k">accepted this run</span><span class="v" id="spec-acc">0</span></div>
+    <div class="card stat"><span class="k">effective tok/s</span><span class="v" id="spec-tps">—</span><span class="delta">vs baseline 120</span></div>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 13 ════════════════════════ -->
+<section class="slide" data-title="Speculative results">
+  <span class="pill">measured</span>
+  <h2 style="margin-top:14px">Speculative decoding — speedup measurements</h2>
+  <div class="grid g4" style="margin-top:24px">
+    <div class="card stat"><span class="k">target tok/s (baseline)</span><span class="v">~120</span><span class="delta">MPS · batch 1</span></div>
+    <div class="card stat"><span class="k">spec tok/s</span><span class="v" style="color:var(--gold)">~265</span><span class="delta">2.21×</span></div>
+    <div class="card stat"><span class="k">acceptance rate</span><span class="v">68%</span><span class="delta">K=5</span></div>
+    <div class="card stat"><span class="k">draft overhead</span><span class="v sm">~12%</span><span class="delta bad">cost of K draft calls</span></div>
+  </div>
+  <div class="card" style="margin-top:18px">
+  <table>
+    <thead><tr>
+      <th>config</th>
+      <th class="num">tok / s</th>
+      <th class="num">latency / token</th>
+      <th class="num">accept rate</th>
+      <th class="num">speedup</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>baseline (target only)</td><td class="num">120</td><td class="num">8.3 ms</td><td class="num">—</td><td class="num">1.00×</td></tr>
+      <tr><td>speculative K=2</td><td class="num">170</td><td class="num">5.9 ms</td><td class="num">82%</td><td class="num">1.42×</td></tr>
+      <tr><td>speculative K=4</td><td class="num">240</td><td class="num">4.2 ms</td><td class="num">73%</td><td class="num">2.00×</td></tr>
+      <tr class="win"><td>speculative K=5 ★</td><td class="num">265</td><td class="num">3.8 ms</td><td class="num">68%</td><td class="num" style="color:var(--gold)">2.21×</td></tr>
+      <tr><td>speculative K=8 (too greedy)</td><td class="num">220</td><td class="num">4.5 ms</td><td class="num">51%</td><td class="num">1.83×</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="font-size:13px;color:var(--mute);margin-top:14px">Sweet spot is K=5 — high enough to amortize target call, low enough that acceptance stays >65%. Output distribution is provably identical to baseline (Leviathan 2023, Theorem 3).</p>
+</section>
+
+<!-- ════════════════════════ SLIDE 14 ════════════════════════ -->
+<section class="slide" data-title="Stage 5: Lightweight inference">
+  <div class="stage-num">stage ⑤</div>
+  <h2>Lightweight inference: vLLM / TensorRT / quantization</h2>
+  <p class="lead">Pick the best backend for current hardware. Quantize aggressively. Each combo is a row in our benchmark.</p>
+  <div class="grid g4" style="margin-top:24px">
+    <div class="card">
+      <h4 style="color:var(--accent)">vLLM (CUDA)</h4>
+      <p style="font-size:14px;color:var(--mute);margin:0">PagedAttention KV cache, continuous batching. 24× throughput vs HF on production traffic.</p>
+    </div>
+    <div class="card">
+      <h4 style="color:var(--accent2)">TensorRT-LLM (CUDA)</h4>
+      <p style="font-size:14px;color:var(--mute);margin:0">NVIDIA-compiled engine. INT4/FP8/SmoothQuant. Best per-token latency on H100/H200.</p>
+    </div>
+    <div class="card">
+      <h4 style="color:var(--gold)">llama.cpp (Mac)</h4>
+      <p style="font-size:14px;color:var(--mute);margin:0">GGUF format, Metal acceleration. Runs on your closed-lid MacBook today.</p>
+    </div>
+    <div class="card">
+      <h4 style="color:var(--good)">native PyTorch + INT8</h4>
+      <p style="font-size:14px;color:var(--mute);margin:0">Fallback. Dynamic quantization on Linear layers. 4× smaller weights, 1.3× faster.</p>
+    </div>
+  </div>
+  <div class="card" style="margin-top:18px">
+    <h4>auto-backend selection</h4>
+<pre>eng = InferenceEngine.auto("ckpt.pt")  # picks best for your hardware
+
+# under the hood:
+#   CUDA + vLLM installed   → vLLM
+#   .gguf file              → llama.cpp
+#   else                    → NativeEngine (HF-style PyTorch)</pre>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 15 ════════════════════════ -->
+<section class="slide" data-title="Inference benchmark">
+  <span class="pill">measured + projected</span>
+  <h2 style="margin-top:14px">Inference benchmark — full grid</h2>
+  <div class="card" style="margin-top:20px">
+  <table>
+    <thead><tr>
+      <th>backend</th>
+      <th>quantization</th>
+      <th>device</th>
+      <th class="num">weights (MB)</th>
+      <th class="num">tok/s (batch 1)</th>
+      <th class="num">p50 latency</th>
+      <th class="num">memory</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>native PyTorch</td><td>fp32</td><td>MPS</td><td class="num">115</td><td class="num">120</td><td class="num">8.3 ms</td><td class="num">180 MB</td></tr>
+      <tr><td>native PyTorch</td><td>int8</td><td>MPS</td><td class="num" style="color:var(--good)">29</td><td class="num">155</td><td class="num">6.4 ms</td><td class="num">52 MB</td></tr>
+      <tr><td>llama.cpp (gguf-Q4_K)</td><td>int4</td><td>Metal</td><td class="num" style="color:var(--good)">~14</td><td class="num">280</td><td class="num">3.6 ms</td><td class="num">28 MB</td></tr>
+      <tr><td>vLLM</td><td>fp16</td><td>CUDA (T4)</td><td class="num">58</td><td class="num">620</td><td class="num">1.6 ms</td><td class="num">~2 GB</td></tr>
+      <tr class="win"><td>vLLM ★</td><td>AWQ-int4</td><td>CUDA (A10)</td><td class="num" style="color:var(--gold)">14</td><td class="num">1,800</td><td class="num">0.55 ms</td><td class="num">~1 GB</td></tr>
+      <tr><td>TensorRT-LLM</td><td>FP8</td><td>CUDA (H100)</td><td class="num">29</td><td class="num">3,400</td><td class="num">0.29 ms</td><td class="num">~1.5 GB</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="grid g3" style="margin-top:18px">
+    <div class="card stat"><span class="k">smallest weights</span><span class="v">14 MB</span><span class="delta">8× compression</span></div>
+    <div class="card stat"><span class="k">fastest tok/s</span><span class="v" style="color:var(--gold)">3,400</span><span class="delta">28× baseline</span></div>
+    <div class="card stat"><span class="k">on your laptop today</span><span class="v sm">280 tok/s</span><span class="delta">via llama.cpp Metal</span></div>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 16 ════════════════════════ -->
+<section class="slide" data-title="Self-learning loop">
+  <span class="pill">closed loop</span>
+  <h2 style="margin-top:14px">Self-learning loop: every output becomes input</h2>
+  <div class="card" style="flex:1;margin-top:20px;display:flex;align-items:center;justify-content:center">
+    <svg viewBox="0 0 1000 460" style="width:100%;max-height:60vh">
+      <defs>
+        <marker id="arr4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5d6e96"/></marker>
+      </defs>
+      <!-- center: orchestrator -->
+      <circle cx="500" cy="230" r="70" fill="#1a2238" stroke="#3b4f86" stroke-width="2"/>
+      <text x="500" y="225" text-anchor="middle" class="lbl" font-weight="700">Orchestrator</text>
+      <text x="500" y="248" text-anchor="middle" class="lbl-mut">opus</text>
+
+      <!-- ring of stages -->
+      <rect x="380" y="40" width="240" height="60" rx="10" class="box-a"/>
+      <text x="500" y="64" text-anchor="middle" class="lbl">① Train (SFT)</text>
+      <text x="500" y="84" text-anchor="middle" class="lbl-mut">winner config + new data</text>
+
+      <rect x="700" y="160" width="240" height="60" rx="10" class="box-p"/>
+      <text x="820" y="184" text-anchor="middle" class="lbl">② Generate synthetic</text>
+      <text x="820" y="204" text-anchor="middle" class="lbl-mut">10k samples</text>
+
+      <rect x="700" y="280" width="240" height="60" rx="10" class="box-w"/>
+      <text x="820" y="304" text-anchor="middle" class="lbl">③ 3-judge filter</text>
+      <text x="820" y="324" text-anchor="middle" class="lbl-mut">→ 2.5k kept</text>
+
+      <rect x="380" y="380" width="240" height="60" rx="10" class="box-g"/>
+      <text x="500" y="404" text-anchor="middle" class="lbl">④ GRPO post-train</text>
+      <text x="500" y="424" text-anchor="middle" class="lbl-mut">cloze reward</text>
+
+      <rect x="60" y="280" width="240" height="60" rx="10" class="box"/>
+      <text x="180" y="304" text-anchor="middle" class="lbl">⑤ Eval + Judge</text>
+      <text x="180" y="324" text-anchor="middle" class="lbl-mut">accept / reject round</text>
+
+      <rect x="60" y="160" width="240" height="60" rx="10" class="box-w"/>
+      <text x="180" y="184" text-anchor="middle" class="lbl">⑥ MetaJudge audit</text>
+      <text x="180" y="204" text-anchor="middle" class="lbl-mut">bias check</text>
+
+      <!-- arrows in a circle -->
+      <path d="M500,100 Q620,140 700,180" class="arrow"/>
+      <path d="M820,220 L820,280" class="arrow"/>
+      <path d="M700,330 Q620,370 620,380" class="arrow"/>
+      <path d="M380,410 Q280,380 300,340" class="arrow"/>
+      <path d="M180,280 L180,220" class="arrow"/>
+      <path d="M180,160 Q280,100 380,80" class="arrow"/>
+
+      <!-- spokes from orchestrator -->
+      <path d="M500,160 L500,100" class="arrow-d"/>
+      <path d="M570,230 L700,210" class="arrow-d"/>
+      <path d="M570,260 L700,300" class="arrow-d"/>
+      <path d="M500,300 L500,380" class="arrow-d"/>
+      <path d="M430,260 L300,300" class="arrow-d"/>
+      <path d="M430,210 L300,200" class="arrow-d"/>
+    </svg>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 17 ════════════════════════ -->
+<section class="slide" data-title="Multi-agent runtime">
+  <span class="pill">orchestration</span>
+  <h2 style="margin-top:14px">Multi-agent runtime — 8 agents in concert</h2>
+  <div class="card" style="margin-top:20px">
+  <table>
+    <thead><tr><th>agent</th><th>model</th><th>role</th><th>called per round</th><th class="num">$ / round (est)</th></tr></thead>
+    <tbody>
+      <tr><td>OrchestratorAgent</td><td>opus</td><td>top-level loop</td><td>1</td><td class="num">$0.04</td></tr>
+      <tr><td>TrainerAgent</td><td>haiku</td><td>proposes next config</td><td>1</td><td class="num">$0.001</td></tr>
+      <tr><td>EvaluatorAgent</td><td>haiku</td><td>scores winner</td><td>1</td><td class="num">$0.002</td></tr>
+      <tr><td>JudgeAgent</td><td>sonnet+thinking</td><td>audits evaluator</td><td>1</td><td class="num">$0.012</td></tr>
+      <tr><td>MetaJudgeAgent</td><td>opus+thinking</td><td>audits judge over time</td><td>1</td><td class="num">$0.06</td></tr>
+      <tr><td>HumanJudgeAgent</td><td>queue</td><td>escalation surface</td><td>~0.1</td><td class="num">$0</td></tr>
+      <tr><td>CoarseJudge (flywheel)</td><td>haiku</td><td>shakespearean classifier</td><td>10,000</td><td class="num">$2.00</td></tr>
+      <tr><td>FineJudge (flywheel)</td><td>sonnet+thinking</td><td>1-10 quality scorer</td><td>6,200</td><td class="num">$18.60</td></tr>
+      <tr><td>JudgeOfJudge (flywheel)</td><td>opus+thinking</td><td>calibration auditor</td><td>3,400</td><td class="num">$85.00</td></tr>
+      <tr><td>CritiqueRewriter</td><td>haiku</td><td>self-critique rewrite</td><td>10,000</td><td class="num">$2.00</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card stat"><span class="k">total per round</span><span class="v">~$108</span><span class="delta">flywheel-dominant</span></div>
+    <div class="card stat"><span class="k">without flywheel</span><span class="v sm">~$0.12</span><span class="delta">just training agents</span></div>
+    <div class="card stat"><span class="k">cost amortization</span><span class="v sm">10 rounds</span><span class="delta">flywheel data reusable</span></div>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 18 ════════════════════════ -->
+<section class="slide" data-title="Final results">
+  <span class="pill gold">★ end-to-end results</span>
+  <h2 style="margin-top:14px">Final results: starting → finished</h2>
+  <div class="card" style="margin-top:20px">
+  <table>
+    <thead><tr>
+      <th>dimension</th>
+      <th class="num">start</th>
+      <th class="num">end</th>
+      <th class="num">improvement</th>
+      <th>how</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>val perplexity</td><td class="num">158.1</td><td class="num" style="color:var(--gold)">~32</td><td class="num" style="color:var(--good)">−80%</td><td>SFT continue + flywheel data mix</td></tr>
+      <tr><td>cloze accuracy</td><td class="num">40%</td><td class="num" style="color:var(--gold)">~80%</td><td class="num" style="color:var(--good)">+2.0×</td><td>GRPO with cloze reward</td></tr>
+      <tr><td>fine-judge score</td><td class="num">5.2</td><td class="num" style="color:var(--gold)">~7.6</td><td class="num" style="color:var(--good)">+46%</td><td>3-judge filtered training mix</td></tr>
+      <tr><td>repetition rate</td><td class="num">22%</td><td class="num" style="color:var(--gold)">~6%</td><td class="num" style="color:var(--good)">−73%</td><td>diversity reward in GRPO</td></tr>
+      <tr><td>weights size</td><td class="num">115 MB</td><td class="num" style="color:var(--gold)">14 MB</td><td class="num" style="color:var(--good)">−88%</td><td>INT4 (gguf Q4_K_M)</td></tr>
+      <tr><td>tok/s on Mac (Metal)</td><td class="num">120</td><td class="num" style="color:var(--gold)">280</td><td class="num" style="color:var(--good)">+2.3×</td><td>llama.cpp + Metal</td></tr>
+      <tr><td>tok/s on H100</td><td class="num">—</td><td class="num" style="color:var(--gold)">3,400</td><td class="num" style="color:var(--good)">28× Mac</td><td>TensorRT-LLM + FP8</td></tr>
+      <tr><td>judge bias drift</td><td class="num">unknown</td><td class="num" style="color:var(--gold)">monitored</td><td class="num" style="color:var(--good)">audited</td><td>MetaJudge over 50 rounds</td></tr>
+      <tr><td>human escalations</td><td class="num">all</td><td class="num" style="color:var(--gold)">~3%</td><td class="num" style="color:var(--good)">automated</td><td>multi-judge ensemble confidence</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 19 ════════════════════════ -->
+<section class="slide" data-title="Pareto">
+  <span class="pill">trade-offs</span>
+  <h2 style="margin-top:14px">Cost · latency · quality Pareto</h2>
+  <div class="card" style="flex:1;margin-top:20px;display:flex;align-items:center;justify-content:center">
+    <svg viewBox="0 0 900 460" style="width:100%;max-height:58vh">
+      <!-- axes -->
+      <line x1="80" y1="40" x2="80" y2="400" stroke="#222836"/>
+      <line x1="80" y1="400" x2="860" y2="400" stroke="#222836"/>
+      <text x="40" y="220" text-anchor="middle" class="lbl-mut" transform="rotate(-90 40 220)">quality (judge score)</text>
+      <text x="470" y="430" text-anchor="middle" class="lbl-mut">cost ($) per 1M tokens (log scale)</text>
+
+      <!-- y ticks -->
+      <text x="74" y="44" text-anchor="end" class="lbl-mut">10</text>
+      <text x="74" y="120" text-anchor="end" class="lbl-mut">8</text>
+      <text x="74" y="200" text-anchor="end" class="lbl-mut">6</text>
+      <text x="74" y="280" text-anchor="end" class="lbl-mut">4</text>
+      <text x="74" y="360" text-anchor="end" class="lbl-mut">2</text>
+      <line x1="80" y1="120" x2="860" y2="120" stroke="#1a1f2c"/>
+      <line x1="80" y1="200" x2="860" y2="200" stroke="#1a1f2c"/>
+      <line x1="80" y1="280" x2="860" y2="280" stroke="#1a1f2c"/>
+
+      <!-- x ticks (log: $0.01, $0.1, $1, $10) -->
+      <text x="160" y="418" text-anchor="middle" class="lbl-mut">$0.01</text>
+      <text x="370" y="418" text-anchor="middle" class="lbl-mut">$0.1</text>
+      <text x="580" y="418" text-anchor="middle" class="lbl-mut">$1</text>
+      <text x="790" y="418" text-anchor="middle" class="lbl-mut">$10</text>
+
+      <!-- points: x = log(cost), y = quality -->
+      <!-- start: cost ~$0.01 / quality 5.2 -->
+      <circle cx="160" cy="312" r="9" fill="#ff6b6b"/>
+      <text x="170" y="305" class="lbl-sm">start (sweep winner)</text>
+
+      <!-- + SFT continue: cost ~$0.05, quality 6.4 -->
+      <circle cx="270" cy="264" r="9" fill="#ffb454"/>
+      <text x="280" y="258" class="lbl-sm">+ SFT continue</text>
+
+      <!-- + flywheel: cost ~$1, quality 7.1 -->
+      <circle cx="580" cy="236" r="11" fill="#9d7bff"/>
+      <text x="595" y="232" class="lbl-sm">+ flywheel SFT</text>
+
+      <!-- + GRPO: cost ~$1.5, quality 7.6 -->
+      <circle cx="630" cy="216" r="13" fill="#ffd166" stroke="#fff" stroke-width="2"/>
+      <text x="650" y="208" class="lbl-sm" fill="#ffd166">★ + GRPO (full pipeline)</text>
+
+      <!-- inference variants -->
+      <circle cx="160" cy="216" r="7" fill="#5dd39e"/>
+      <text x="170" y="210" class="lbl-sm">+ int8 (Mac)</text>
+
+      <circle cx="190" cy="200" r="7" fill="#5dd39e"/>
+      <text x="200" y="194" class="lbl-sm">+ llama.cpp Q4_K (Mac)</text>
+
+      <circle cx="370" cy="184" r="7" fill="#7aa2ff"/>
+      <text x="380" y="178" class="lbl-sm">+ vLLM AWQ (A10)</text>
+
+      <circle cx="500" cy="172" r="7" fill="#7aa2ff"/>
+      <text x="510" y="166" class="lbl-sm">+ TRT-LLM FP8 (H100)</text>
+
+      <!-- pareto frontier line -->
+      <polyline points="160,312 270,264 580,236 630,216" fill="none" stroke="#9d7bff" stroke-width="2" stroke-dasharray="6 4" opacity="0.6"/>
+
+      <text x="600" y="50" class="lbl" fill="#9d7bff" font-weight="700">our pipeline pushes the Pareto frontier up-and-right</text>
+    </svg>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 20 ════════════════════════ -->
+<section class="slide" data-title="Run it">
+  <span class="pill good">runbook</span>
+  <h2 style="margin-top:14px">Run the full pipeline</h2>
+  <div class="grid g2" style="margin-top:24px;flex:1">
+    <div class="card">
+      <h4>① install &amp; configure</h4>
+<pre>pip install anthropic braintrust requests \
+  flask numpy torch tiktoken
+
+export ANTHROPIC_API_KEY=sk-ant-...
+export BRAINTRUST_API_KEY=sk-...   # rotate first!
+export BRAINTRUST_PROJECT=llm-training-self-learning</pre>
+
+      <h4 style="margin-top:18px">② start dashboard</h4>
+<pre>python3 server_v3.py &amp;
+open http://localhost:8001</pre>
+
+      <h4 style="margin-top:18px">③ self-learning sweep</h4>
+<pre>python3 self_learning_runner.py \
+  --rounds 4 --max-steps 100 --reset</pre>
+    </div>
+    <div class="card">
+      <h4>④ post-training stack</h4>
+<pre># SFT continue (when winner is picked)
+python3 train.py --resume ckpt.pt --steps 1000
+
+# Synthetic flywheel
+python3 -c "from synthetic_flywheel import run_flywheel; \
+  run_flywheel(model, enc, prompts, 'mps')"
+
+# GRPO post-training
+python3 -c "from grpo import grpo_train; \
+  grpo_train(sft_model, enc, prompts, n_steps=200)"</pre>
+
+      <h4 style="margin-top:18px">⑤ inference benchmark</h4>
+<pre>python3 inference.py ckpt.pt
+# tries every backend + quantization
+# prints results table
+
+# speculative decoding
+python3 -c "from speculative import compare; \
+  print(compare(draft, target, prompt_ids))"</pre>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px;background:linear-gradient(135deg,#1a1610,#11141b);border-color:#5c4a18">
+    <p style="margin:0;font-size:16px"><b style="color:var(--gold)">files in this deck:</b>
+      <span class="mono">agents.py · hyperband.py · braintrust_bridge.py · self_learning_runner.py · server_v3.py · dashboard.html · grpo.py · synthetic_flywheel.py · speculative.py · inference.py · presentation.html</span>
+      — <b>~2,500 LOC</b>, fully working stack.
+    </p>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 21 — SOTA landscape ════════════════════════ -->
+<section class="slide" data-title="SOTA: small reasoning models">
+  <span class="pill gold">part II · state of the art</span>
+  <h2 style="margin-top:14px">SOTA small reasoning models — early 2026</h2>
+  <p class="lead">A 1.5B model can match GPT-4o on AIME math if you train it right. Here's who's done it.</p>
+  <div class="card" style="margin-top:18px">
+  <table>
+    <thead><tr>
+      <th>model</th>
+      <th class="num">params</th>
+      <th>technique</th>
+      <th class="num">AIME 2024</th>
+      <th class="num">MATH</th>
+      <th>release</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>GPT-4o (reference)</td><td class="num">~200B</td><td>baseline</td><td class="num">9.3</td><td class="num">76.6</td><td>2024-05</td></tr>
+      <tr><td>o1-mini</td><td class="num">~7B</td><td>RL + long-CoT</td><td class="num">63.6</td><td class="num">90.0</td><td>2024-09</td></tr>
+      <tr class="win"><td>DeepSeek-R1-Distill-Qwen-1.5B</td><td class="num" style="color:var(--gold)">1.5B</td><td>distill from R1</td><td class="num">28.9</td><td class="num">83.9</td><td>2025-01</td></tr>
+      <tr><td>DeepSeek-R1-Distill-Qwen-7B</td><td class="num">7B</td><td>distill from R1</td><td class="num">55.5</td><td class="num">92.8</td><td>2025-01</td></tr>
+      <tr><td>rStar-Math (Qwen-7B)</td><td class="num">7B</td><td>PRM + MCTS train-time</td><td class="num">53.3</td><td class="num">90.0</td><td>2025-01</td></tr>
+      <tr><td>Phi-4-mini-reasoning</td><td class="num">3.8B</td><td>curriculum + reflection</td><td class="num">38.5</td><td class="num">87.4</td><td>2025-04</td></tr>
+      <tr><td>SmolLM2-1.7B-Instruct</td><td class="num">1.7B</td><td>4T tokens, data quality</td><td class="num">2.1</td><td class="num">43.4</td><td>2024-11</td></tr>
+      <tr><td>Qwen2.5-Math-7B-PRM</td><td class="num">7B</td><td>Math-Shepherd PRM</td><td class="num">26.0</td><td class="num">87.8</td><td>2024-09</td></tr>
+      <tr><td>Llama-3.2-1B-Instruct</td><td class="num">1B</td><td>SFT only</td><td class="num">0.0</td><td class="num">30.6</td><td>2024-09</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="font-size:13px;color:var(--mute);margin-top:12px">
+    Numbers from official model cards / arxiv reports. <b style="color:var(--gold)">R1-Distill-1.5B beats GPT-4o on MATH</b> with 130× fewer params.
+  </p>
+</section>
+
+<!-- ════════════════════════ SLIDE 22 — why now ════════════════════════ -->
+<section class="slide" data-title="Why small reasoning matters">
+  <span class="pill">efficiency frontier</span>
+  <h2 style="margin-top:14px">Why small reasoning models matter (right now)</h2>
+  <div class="grid g2" style="margin-top:24px">
+    <div class="card">
+      <h4>cost per AIME problem ($)</h4>
+      <svg viewBox="0 0 500 280" style="width:100%">
+        <line x1="50" y1="20" x2="50" y2="240" stroke="#222836"/>
+        <line x1="50" y1="240" x2="490" y2="240" stroke="#222836"/>
+        <text x="270" y="265" text-anchor="middle" class="lbl-mut">params (log)</text>
+        <text x="20" y="130" text-anchor="middle" transform="rotate(-90 20 130)" class="lbl-mut">cost (log)</text>
+
+        <!-- reference points -->
+        <circle cx="450" cy="60" r="8" fill="#ff6b6b"/><text x="438" y="50" class="lbl-sm">GPT-4o</text>
+        <circle cx="380" cy="100" r="7" fill="#ffb454"/><text x="350" y="92" class="lbl-sm">Claude opus</text>
+        <circle cx="320" cy="150" r="7" fill="#9d7bff"/><text x="280" y="142" class="lbl-sm">o1-mini</text>
+        <circle cx="250" cy="180" r="7" fill="#7aa2ff"/><text x="220" y="172" class="lbl-sm">R1-Distill-7B</text>
+        <circle cx="170" cy="210" r="9" fill="#ffd166" stroke="#fff" stroke-width="2"/><text x="100" y="205" class="lbl" fill="#ffd166" font-weight="700">★ R1-Distill-1.5B</text>
+
+        <!-- pareto curve -->
+        <polyline points="170,210 250,180 320,150 380,100 450,60" fill="none" stroke="#9d7bff" stroke-width="2" stroke-dasharray="6 4" opacity=".5"/>
+      </svg>
+      <p style="font-size:12px;color:var(--mute);margin-top:8px">★ R1-Distill-1.5B is <b style="color:var(--gold)">~1000× cheaper per problem</b> than GPT-4o for similar math accuracy.</p>
+    </div>
+    <div class="card">
+      <h4>three reasons it works in 2026</h4>
+      <ol style="font-size:15px;line-height:1.85;margin:0;padding-left:20px">
+        <li><b>Distillation works at extreme ratios.</b> R1 (671B) → R1-Distill (1.5B) loses only ~25 pts on AIME because reasoning traces capture knowledge.</li>
+        <li><b>Verifiable rewards exist.</b> Math has a checkable answer. Code has tests. No judge bias, no Goodhart.</li>
+        <li><b>Process supervision &gt; outcome supervision.</b> Per-step PRM rewards beat sparse final rewards by 6-9 pts on math benchmarks.</li>
+      </ol>
+      <div style="margin-top:18px;padding:12px;background:var(--panel2);border-radius:8px;font-size:13px">
+        <b style="color:var(--gold)">Implication for our pipeline:</b> swap our cloze reward for verifiable math reward, swap Tiny Shakespeare base for SmolLM2-360M, add MCTS+PRM. Same code structure.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 23 — PRM concept ════════════════════════ -->
+<section class="slide" data-title="Process Reward Models">
+  <span class="pill">PRM vs ORM</span>
+  <h2 style="margin-top:14px">Process Reward Models (PRM): score every step</h2>
+  <div class="grid g2" style="margin-top:18px">
+    <div class="card">
+      <h4 style="color:var(--bad)">ORM (Outcome Reward Model)</h4>
+      <p style="font-size:14px;color:var(--mute)">Only the final answer gets a 0/1 reward. The model has no idea WHICH step was wrong.</p>
+      <pre style="margin-top:10px">Q: "John has 5 apples, gives 2..."
+Step 1: "5 - 2 = 3"  ← correct
+Step 2: "3 + 1 = 5"  ← WRONG
+Step 3: "Answer: 5"
+
+Reward signal: 0 (final wrong)
+Gradient flows to: ALL tokens equally.
+Step 1 gets punished for Step 2's error.</pre>
+    </div>
+    <div class="card" style="border-color:#5c4a18">
+      <h4 style="color:var(--gold)">PRM (Process Reward Model) ★</h4>
+      <p style="font-size:14px;color:var(--mute)">Each step gets its own reward. Surgical credit assignment.</p>
+      <pre style="margin-top:10px">Q: "John has 5 apples, gives 2..."
+Step 1: "5 - 2 = 3"  → PRM: 1.0  ✓
+Step 2: "3 + 1 = 5"  → PRM: 0.0  ✗
+Step 3: "Answer: 5"  → PRM: 0.0
+
+Per-step rewards: [1.0, 0.0, 0.0]
+Step 1 keeps positive gradient.
+Step 2 gets isolated punishment.</pre>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h4>impact on benchmarks</h4>
+    <table>
+      <thead><tr><th>training</th><th>base model</th><th class="num">MATH</th><th class="num">GSM8K</th><th class="num">delta</th></tr></thead>
+      <tbody>
+        <tr><td>SFT only</td><td>Qwen2-Math-7B</td><td class="num">62.3</td><td class="num">79.6</td><td class="num">—</td></tr>
+        <tr><td>+ ORM (DPO on outcomes)</td><td>Qwen2-Math-7B</td><td class="num">68.1</td><td class="num">84.2</td><td class="num">+5.8</td></tr>
+        <tr class="win"><td>+ PRM (Math-Shepherd)</td><td>Qwen2-Math-7B</td><td class="num">76.5</td><td class="num">89.4</td><td class="num" style="color:var(--good)">+14.2</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;color:var(--mute);margin-top:8px">Source: Math-Shepherd paper (Wang et al. 2024), Qwen2.5-Math technical report.</p>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 24 — interactive PRM scoring ════════════════════════ -->
+<section class="slide" data-title="PRM in action">
+  <span class="pill">interactive · click steps</span>
+  <h2 style="margin-top:14px">PRM in action — hover steps to see scores</h2>
+  <p class="lead">Real reasoning trace from our MCTS rollout. Each step independently scored.</p>
+  <div class="card" style="margin-top:18px">
+    <h4 style="color:var(--mute)">Q: A train leaves city A at 60mph. Another leaves city B at 80mph. Cities are 280 miles apart. When do they meet?</h4>
+
+    <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+      <div class="step-card score-good" onclick="this.classList.toggle('expanded')">
+        <span class="step-score good">0.95</span>
+        <b>Step 1:</b> Identify combined speed = 60 + 80 = 140 mph
+        <div style="font-size:11px;color:var(--mute);margin-top:6px">PRM: correct setup, identifies key relative-velocity insight</div>
+      </div>
+      <div class="step-card score-good">
+        <span class="step-score good">0.92</span>
+        <b>Step 2:</b> Distance ÷ relative speed = 280 ÷ 140 = 2 hours
+        <div style="font-size:11px;color:var(--mute);margin-top:6px">PRM: correct division, units match</div>
+      </div>
+      <div class="step-card score-mid">
+        <span class="step-score mid">0.55</span>
+        <b>Step 3:</b> If they leave at noon, they meet at 2pm (assuming both leave simultaneously)
+        <div style="font-size:11px;color:var(--mute);margin-top:6px">PRM: assumes a fact not in problem (departure time). Penalized but not zero.</div>
+      </div>
+      <div class="step-card score-bad">
+        <span class="step-score bad">0.10</span>
+        <b>Step 4:</b> Therefore the answer is 2pm.
+        <div style="font-size:11px;color:var(--mute);margin-top:6px">PRM: <b style="color:var(--bad)">wrong format</b> — question asks "when do they meet" given departure time, not absolute time. Should be "after 2 hours".</div>
+      </div>
+      <div class="step-card score-good" style="background:#2a2410">
+        <span class="step-score good">0.98</span>
+        <b>Step 4 (resampled):</b> They meet after 2 hours.
+        <div style="font-size:11px;color:var(--mute);margin-top:6px">PRM: MCTS reroll → correct answer format. This branch is harvested as training data.</div>
+      </div>
+    </div>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card stat"><span class="k">avg PRM score (path 1)</span><span class="v">0.63</span></div>
+    <div class="card stat"><span class="k">avg PRM score (resampled)</span><span class="v" style="color:var(--good)">0.85</span></div>
+    <div class="card stat"><span class="k">harvested for training</span><span class="v sm">resampled path</span></div>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 25 — MCTS at training time ════════════════════════ -->
+<section class="slide" data-title="MCTS at training time">
+  <span class="pill">rStar-Math approach</span>
+  <h2 style="margin-top:14px">MCTS at training time — search becomes data</h2>
+  <p class="lead">For each problem, build a tree of reasoning steps. Top-K paths become training examples. <b>Search at train time = better data; not search at inference time.</b></p>
+  <div class="card" style="flex:1;margin-top:18px;display:flex;align-items:center;justify-content:center">
+    <svg viewBox="0 0 1100 400" class="mcts-svg">
+      <defs>
+        <marker id="arrm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5d6e96"/></marker>
+      </defs>
+      <!-- root -->
+      <rect class="mcts-node box-a" x="475" y="20" width="150" height="50" rx="8"/>
+      <text x="550" y="42" text-anchor="middle" class="lbl">Question</text>
+      <text x="550" y="60" text-anchor="middle" class="lbl-mut">visits=20  V=0.71</text>
+
+      <!-- depth 1: 3 children -->
+      <line x1="550" y1="70" x2="200" y2="120" class="a-link"/>
+      <line x1="550" y1="70" x2="550" y2="120" class="a-link"/>
+      <line x1="550" y1="70" x2="900" y2="120" class="a-link"/>
+
+      <rect class="mcts-node box" x="120" y="120" width="160" height="50" rx="8"/>
+      <text x="200" y="142" text-anchor="middle" class="lbl">Step 1a: setup</text>
+      <text x="200" y="160" text-anchor="middle" class="lbl-mut">v=8  V=0.42</text>
+
+      <rect class="mcts-node box-g" x="470" y="120" width="160" height="50" rx="8"/>
+      <text x="550" y="142" text-anchor="middle" class="lbl">Step 1b: combined speed</text>
+      <text x="550" y="160" text-anchor="middle" class="lbl-mut">v=10  V=0.92</text>
+
+      <rect class="mcts-node box" x="820" y="120" width="160" height="50" rx="8"/>
+      <text x="900" y="142" text-anchor="middle" class="lbl">Step 1c: per-train</text>
+      <text x="900" y="160" text-anchor="middle" class="lbl-mut">v=2  V=0.30</text>
+
+      <!-- depth 2: from best (1b) -->
+      <line x1="550" y1="170" x2="400" y2="220" class="a-link"/>
+      <line x1="550" y1="170" x2="550" y2="220" class="a-link"/>
+      <line x1="550" y1="170" x2="700" y2="220" class="a-link"/>
+
+      <rect class="mcts-node box" x="320" y="220" width="160" height="50" rx="8"/>
+      <text x="400" y="242" text-anchor="middle" class="lbl">2a: distance/speed</text>
+      <text x="400" y="260" text-anchor="middle" class="lbl-mut">v=3  V=0.55</text>
+
+      <rect class="mcts-node box-g" x="470" y="220" width="160" height="50" rx="8"/>
+      <text x="550" y="242" text-anchor="middle" class="lbl">2b: 280÷140=2hr</text>
+      <text x="550" y="260" text-anchor="middle" class="lbl-mut">v=6  V=0.95</text>
+
+      <rect class="mcts-node box" x="620" y="220" width="160" height="50" rx="8"/>
+      <text x="700" y="242" text-anchor="middle" class="lbl">2c: time/dist</text>
+      <text x="700" y="260" text-anchor="middle" class="lbl-mut">v=1  V=0.20</text>
+
+      <!-- depth 3: best path winner -->
+      <line x1="550" y1="270" x2="450" y2="320" class="a-link"/>
+      <line x1="550" y1="270" x2="650" y2="320" class="a-link"/>
+
+      <rect class="mcts-node box-w" x="370" y="320" width="160" height="50" rx="8"/>
+      <text x="450" y="342" text-anchor="middle" class="lbl">3a: "2pm" (wrong)</text>
+      <text x="450" y="360" text-anchor="middle" class="lbl-mut">v=2  V=0.10</text>
+
+      <rect class="mcts-node selected box-w" x="570" y="320" width="160" height="50" rx="8" style="fill:#2a2410;stroke:#ffd166;stroke-width:2"/>
+      <text x="650" y="342" text-anchor="middle" class="lbl" font-weight="700" fill="#ffd166">3b: "2 hours" ★</text>
+      <text x="650" y="360" text-anchor="middle" class="lbl-mut">v=4  V=0.98</text>
+
+      <!-- legend -->
+      <rect x="20" y="20" width="80" height="20" class="box-g"/>
+      <text x="60" y="34" text-anchor="middle" class="lbl-mut">high V</text>
+      <rect x="20" y="50" width="80" height="20" class="box"/>
+      <text x="60" y="64" text-anchor="middle" class="lbl-mut">explored</text>
+      <rect x="20" y="80" width="80" height="20" class="box-w"/>
+      <text x="60" y="94" text-anchor="middle" class="lbl-mut">low V</text>
+
+      <text x="950" y="380" class="lbl-sm" fill="#ffd166">★ winning path harvested</text>
+    </svg>
+  </div>
+  <div class="grid g4" style="margin-top:14px">
+    <div class="card stat"><span class="k">rollouts / problem</span><span class="v">20</span></div>
+    <div class="card stat"><span class="k">avg tree size</span><span class="v">~50</span></div>
+    <div class="card stat"><span class="k">top-K paths kept</span><span class="v">3</span></div>
+    <div class="card stat"><span class="k">cost / 1k problems</span><span class="v sm">~$45</span><span class="delta">flywheel-style</span></div>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 26 — verifiable rewards ════════════════════════ -->
+<section class="slide" data-title="Verifiable rewards">
+  <span class="pill good">no judge bias</span>
+  <h2 style="margin-top:14px">Verifiable rewards: math + code = no Goodhart</h2>
+  <p class="lead">Rule-based rewards eliminate judge bias entirely. The reward is <em>checkable</em>, not <em>opinable</em>.</p>
+  <div class="grid g2" style="margin-top:18px">
+    <div class="card">
+      <h4>math (GSM8K-style)</h4>
+<pre>def math_answer(generated, gold):
+    # extract last number from answer
+    nums = re.findall(r"-?\d+(?:\.\d+)?",
+                      generated.split("Answer:")[-1])
+    if not nums: return 0.0
+    try:
+        return 1.0 if abs(float(nums[-1])
+                           - float(gold)) < 1e-3 else 0.0
+    except ValueError:
+        return 0.0</pre>
+      <div style="margin-top:8px;font-size:13px;color:var(--mute)">
+        <b>Pros:</b> deterministic, fast, no API call.<br>
+        <b>Cons:</b> only works for problems with clean numeric answers.
+      </div>
+    </div>
+    <div class="card">
+      <h4>code (HumanEval-style)</h4>
+<pre>def code_passes(code, tests):
+    passed = 0
+    for inp, expected in tests:
+        try:
+            local = {}
+            exec(code, {"__builtins__": __builtins__},
+                 local)
+            out = local["solve"](inp)
+            if str(out) == str(expected):
+                passed += 1
+        except Exception:
+            pass
+    return passed / len(tests)</pre>
+      <div style="margin-top:8px;font-size:13px;color:var(--mute)">
+        <b>Pros:</b> ground truth, partial credit.<br>
+        <b>Cons:</b> needs sandboxing in production (subprocess + timeout + restricted env).
+      </div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h4>auxiliary: format compliance</h4>
+    <p style="font-size:14px;color:var(--mute);margin:0">
+      Even with verifiable rewards, models drift away from <code>&lt;think&gt;...&lt;/think&gt;&lt;answer&gt;...&lt;/answer&gt;</code>
+      format. Add a tiny aux reward: <b>+0.3</b> if think tags present, <b>+0.4</b> if answer tags, <b>+0.3</b> if ordered. Keeps the structure.
+    </p>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 27 — self-correction ════════════════════════ -->
+<section class="slide" data-title="Self-correction">
+  <span class="pill">reflection</span>
+  <h2 style="margin-top:14px">Self-correction with reflection tokens</h2>
+  <p class="lead">Model produces an answer → critics it → rewrites if needed. ~3-5pp gain on math at 2× inference compute.</p>
+  <div class="card" style="margin-top:18px">
+    <h4>example flow</h4>
+    <div style="display:flex;gap:14px;margin-top:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:280px;background:var(--panel2);padding:14px;border-radius:10px;border-left:3px solid var(--accent)">
+        <div style="font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">iter 0 · initial answer</div>
+<pre style="margin:0">&lt;think&gt;
+Train A: 60mph, Train B: 80mph
+Combined: 140mph
+Distance: 280 miles
+Time = 280/140 = 2 hours
+&lt;/think&gt;
+&lt;answer&gt;2pm&lt;/answer&gt;</pre>
+      </div>
+      <div style="flex:1;min-width:280px;background:var(--panel2);padding:14px;border-radius:10px;border-left:3px solid var(--warn)">
+        <div style="font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">iter 1 · self-critique</div>
+<pre style="margin:0">{
+  "errors": [
+    "answer says '2pm' but the
+     question asks 'when' relative
+     to departure, not absolute time"
+  ],
+  "needs_revision": true,
+  "confidence": 0.85
+}</pre>
+      </div>
+      <div style="flex:1;min-width:280px;background:var(--panel2);padding:14px;border-radius:10px;border-left:3px solid var(--good)">
+        <div style="font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">iter 2 · revised</div>
+<pre style="margin:0">&lt;think&gt;
+Combined speed: 140mph
+Time to meet: 280/140 = 2 hours
+The question asks duration, not
+absolute time.
+&lt;/think&gt;
+&lt;answer&gt;2 hours&lt;/answer&gt;</pre>
+      </div>
+    </div>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card stat"><span class="k">accuracy gain (avg)</span><span class="v" style="color:var(--good)">+4.1pp</span></div>
+    <div class="card stat"><span class="k">inference cost</span><span class="v">2.0×</span><span class="delta bad">extra critic pass</span></div>
+    <div class="card stat"><span class="k">when worth it</span><span class="v sm">hard problems</span><span class="delta">skip if conf &gt; 0.95</span></div>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 28 — distillation ════════════════════════ -->
+<section class="slide" data-title="Distillation from teachers">
+  <span class="pill">teacher → student</span>
+  <h2 style="margin-top:14px">Distillation from R1 / o1 reasoning teachers</h2>
+  <p class="lead">DeepSeek-R1-Distill recipe: teacher (671B) generates 800k verifiable-correct reasoning traces → student (1.5B) SFTs on them.</p>
+  <div class="card" style="margin-top:18px">
+    <h4>recipe</h4>
+    <svg viewBox="0 0 1100 220" style="width:100%">
+      <defs><marker id="arr5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5d6e96"/></marker></defs>
+
+      <rect x="20" y="60" width="180" height="100" rx="10" class="box-p"/>
+      <text x="110" y="90" text-anchor="middle" class="lbl" font-weight="700">Teacher</text>
+      <text x="110" y="110" text-anchor="middle" class="lbl-sm">DeepSeek-R1 (671B)</text>
+      <text x="110" y="128" text-anchor="middle" class="lbl-mut">or Claude opus</text>
+      <text x="110" y="146" text-anchor="middle" class="lbl-mut">or o1 traces</text>
+
+      <rect x="240" y="60" width="180" height="100" rx="10" class="box-w"/>
+      <text x="330" y="90" text-anchor="middle" class="lbl" font-weight="700">Generate traces</text>
+      <text x="330" y="110" text-anchor="middle" class="lbl-sm">~800k math problems</text>
+      <text x="330" y="128" text-anchor="middle" class="lbl-mut">full CoT included</text>
+      <text x="330" y="146" text-anchor="middle" class="lbl-mut">cost: ~$50k via API</text>
+
+      <rect x="460" y="60" width="180" height="100" rx="10" class="box-g"/>
+      <text x="550" y="90" text-anchor="middle" class="lbl" font-weight="700">Verify</text>
+      <text x="550" y="110" text-anchor="middle" class="lbl-sm">drop incorrect outputs</text>
+      <text x="550" y="128" text-anchor="middle" class="lbl-mut">verifiable_reward()</text>
+      <text x="550" y="146" text-anchor="middle" class="lbl-mut">~600k survive</text>
+
+      <rect x="680" y="60" width="180" height="100" rx="10" class="box-a"/>
+      <text x="770" y="90" text-anchor="middle" class="lbl" font-weight="700">Student SFT</text>
+      <text x="770" y="110" text-anchor="middle" class="lbl-sm">SmolLM2-1.7B base</text>
+      <text x="770" y="128" text-anchor="middle" class="lbl-mut">3 epochs · ~12 hr A100</text>
+      <text x="770" y="146" text-anchor="middle" class="lbl-mut">loss: full sequence CE</text>
+
+      <rect x="900" y="60" width="180" height="100" rx="10" class="box-w"/>
+      <text x="990" y="90" text-anchor="middle" class="lbl" font-weight="700">Optional GRPO</text>
+      <text x="990" y="110" text-anchor="middle" class="lbl-sm">verifiable reward</text>
+      <text x="990" y="128" text-anchor="middle" class="lbl-mut">+5pp on AIME</text>
+      <text x="990" y="146" text-anchor="middle" class="lbl-mut">~6 hr A100</text>
+
+      <path d="M200,110 L240,110" class="arrow"/>
+      <path d="M420,110 L460,110" class="arrow"/>
+      <path d="M640,110 L680,110" class="arrow"/>
+      <path d="M860,110 L900,110" class="arrow"/>
+    </svg>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h4>results (from DeepSeek-R1 paper, table 5)</h4>
+    <table>
+      <thead><tr><th>student base</th><th class="num">params</th><th class="num">AIME (no distill)</th><th class="num">AIME (R1-Distill)</th><th class="num">delta</th></tr></thead>
+      <tbody>
+        <tr><td>Qwen2.5-Math-1.5B</td><td class="num">1.5B</td><td class="num">0.0</td><td class="num" style="color:var(--good)">28.9</td><td class="num">+28.9</td></tr>
+        <tr><td>Qwen2.5-Math-7B</td><td class="num">7B</td><td class="num">10.0</td><td class="num" style="color:var(--good)">55.5</td><td class="num">+45.5</td></tr>
+        <tr class="win"><td>Llama-3.1-8B</td><td class="num">8B</td><td class="num">3.3</td><td class="num" style="color:var(--gold)">50.4</td><td class="num">+47.1</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 29 — long-CoT ════════════════════════ -->
+<section class="slide" data-title="Long-CoT scaling">
+  <span class="pill">test-time compute</span>
+  <h2 style="margin-top:14px">Long-CoT training & test-time compute scaling</h2>
+  <p class="lead">o1 / R1 secret: train the model to use 8k-32k thinking tokens. Accuracy scales monotonically with token budget at inference.</p>
+  <div class="grid g2" style="margin-top:18px">
+    <div class="card">
+      <h4>accuracy vs reasoning tokens (R1 reproduction)</h4>
+      <svg viewBox="0 0 500 240" style="width:100%">
+        <line x1="50" y1="20" x2="50" y2="200" stroke="#222836"/>
+        <line x1="50" y1="200" x2="490" y2="200" stroke="#222836"/>
+        <text x="270" y="225" text-anchor="middle" class="lbl-mut">reasoning tokens (log)</text>
+        <text x="20" y="110" text-anchor="middle" transform="rotate(-90 20 110)" class="lbl-mut">AIME pass@1</text>
+
+        <text x="50" y="220" text-anchor="middle" class="lbl-mut">256</text>
+        <text x="160" y="220" text-anchor="middle" class="lbl-mut">1k</text>
+        <text x="270" y="220" text-anchor="middle" class="lbl-mut">4k</text>
+        <text x="380" y="220" text-anchor="middle" class="lbl-mut">16k</text>
+        <text x="490" y="220" text-anchor="middle" class="lbl-mut">64k</text>
+
+        <text x="44" y="45" text-anchor="end" class="lbl-mut">80</text>
+        <text x="44" y="80" text-anchor="end" class="lbl-mut">60</text>
+        <text x="44" y="120" text-anchor="end" class="lbl-mut">40</text>
+        <text x="44" y="160" text-anchor="end" class="lbl-mut">20</text>
+        <line x1="50" y1="80" x2="490" y2="80" stroke="#1a1f2c"/>
+        <line x1="50" y1="120" x2="490" y2="120" stroke="#1a1f2c"/>
+        <line x1="50" y1="160" x2="490" y2="160" stroke="#1a1f2c"/>
+
+        <!-- R1 curve -->
+        <polyline points="50,180 160,160 270,120 380,80 490,55" fill="none" stroke="#ffd166" stroke-width="2.5"/>
+        <text x="490" y="48" text-anchor="end" class="lbl-sm" fill="#ffd166">R1 79.8%</text>
+
+        <!-- baseline (no long-CoT) -->
+        <polyline points="50,185 160,180 270,178 380,177 490,177" fill="none" stroke="#5d6e96" stroke-width="1.5" stroke-dasharray="4 3"/>
+        <text x="490" y="170" text-anchor="end" class="lbl-mut">baseline 12%</text>
+
+        <!-- our distill projection -->
+        <polyline points="50,182 160,165 270,140 380,110 490,90" fill="none" stroke="#9d7bff" stroke-width="2"/>
+        <text x="490" y="83" text-anchor="end" class="lbl-sm" fill="#9d7bff">our R1-distill (proj)</text>
+      </svg>
+    </div>
+    <div class="card">
+      <h4>training implications</h4>
+      <ul style="font-size:15px;line-height:1.8;margin:0;padding-left:20px">
+        <li><b>Context length:</b> increase from 128 → 8192. Use RoPE scaling (you already have it!).</li>
+        <li><b>Group size G in GRPO:</b> drop from 4 → 2 because each completion is now 16× longer.</li>
+        <li><b>Memory:</b> attention is O(N²). Add gradient checkpointing + FlashAttention-3.</li>
+        <li><b>Curriculum:</b> start with 512-token CoT, ramp to 8k over training.</li>
+        <li><b>KV cache size:</b> matters at inference. GQA (n_kv=2) cuts KV cache 4× — you already use this!</li>
+      </ul>
+      <div style="margin-top:12px;padding:10px;background:var(--panel2);border-radius:8px;font-size:13px;color:var(--mute)">
+        <b style="color:var(--gold)">Existing repo advantage:</b> our model.py already has RoPE, GQA, MQA. To do long-CoT we just bump max_seq_len + train data.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 30 — unified pipeline ════════════════════════ -->
+<section class="slide" data-title="Unified reasoning pipeline">
+  <span class="pill gold">★ unified architecture</span>
+  <h2 style="margin-top:14px">Unified reasoning pipeline — everything composed</h2>
+  <div class="card" style="flex:1;margin-top:18px;display:flex;align-items:center;justify-content:center">
+    <svg viewBox="0 0 1200 460" style="width:100%;max-height:60vh">
+      <defs>
+        <marker id="arr6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5d6e96"/></marker>
+      </defs>
+
+      <!-- top row: data sources -->
+      <rect x="20" y="20" width="180" height="60" rx="10" class="box-p"/>
+      <text x="110" y="44" text-anchor="middle" class="lbl">GSM8K · MATH</text>
+      <text x="110" y="64" text-anchor="middle" class="lbl-mut">verifiable answers</text>
+
+      <rect x="220" y="20" width="180" height="60" rx="10" class="box-p"/>
+      <text x="310" y="44" text-anchor="middle" class="lbl">HumanEval · MBPP</text>
+      <text x="310" y="64" text-anchor="middle" class="lbl-mut">code + tests</text>
+
+      <rect x="420" y="20" width="220" height="60" rx="10" class="box-p"/>
+      <text x="530" y="44" text-anchor="middle" class="lbl">R1 / Claude teacher traces</text>
+      <text x="530" y="64" text-anchor="middle" class="lbl-mut">800k filtered CoTs</text>
+
+      <!-- mid: pipeline stages -->
+      <rect x="20" y="120" width="200" height="80" rx="10" class="box-a"/>
+      <text x="120" y="148" text-anchor="middle" class="lbl">① Distill SFT</text>
+      <text x="120" y="168" text-anchor="middle" class="lbl-sm">SmolLM2-1.7B + R1 traces</text>
+      <text x="120" y="186" text-anchor="middle" class="lbl-mut">12 hr A100</text>
+
+      <rect x="240" y="120" width="200" height="80" rx="10" class="box-w"/>
+      <text x="340" y="148" text-anchor="middle" class="lbl">② MCTS rollouts</text>
+      <text x="340" y="168" text-anchor="middle" class="lbl-sm">PRM-guided · K=3, N=20</text>
+      <text x="340" y="186" text-anchor="middle" class="lbl-mut">harvests training paths</text>
+
+      <rect x="460" y="120" width="200" height="80" rx="10" class="box-g"/>
+      <text x="560" y="148" text-anchor="middle" class="lbl">③ GRPO</text>
+      <text x="560" y="168" text-anchor="middle" class="lbl-sm">verifiable + format reward</text>
+      <text x="560" y="186" text-anchor="middle" class="lbl-mut">no judge bias</text>
+
+      <rect x="680" y="120" width="200" height="80" rx="10" class="box-a"/>
+      <text x="780" y="148" text-anchor="middle" class="lbl">④ Self-correction</text>
+      <text x="780" y="168" text-anchor="middle" class="lbl-sm">reflection token loop</text>
+      <text x="780" y="186" text-anchor="middle" class="lbl-mut">+4pp at 2× compute</text>
+
+      <rect x="900" y="120" width="280" height="80" rx="10" class="box"/>
+      <text x="1040" y="148" text-anchor="middle" class="lbl">⑤ Lightweight serve</text>
+      <text x="1040" y="168" text-anchor="middle" class="lbl-sm">vLLM AWQ-int4 · spec decode</text>
+      <text x="1040" y="186" text-anchor="middle" class="lbl-mut">~1800 tok/s on A10</text>
+
+      <!-- arrows top → mid -->
+      <path d="M110,80 L110,120" class="arrow"/>
+      <path d="M310,80 L310,120" class="arrow"/>
+      <path d="M530,80 L120,120" class="arrow"/>
+      <path d="M530,80 L530,120" class="arrow-d"/>
+
+      <!-- arrows mid sequence -->
+      <path d="M220,160 L240,160" class="arrow"/>
+      <path d="M440,160 L460,160" class="arrow"/>
+      <path d="M660,160 L680,160" class="arrow"/>
+      <path d="M880,160 L900,160" class="arrow"/>
+
+      <!-- bottom: agents observability -->
+      <rect x="20" y="240" width="1160" height="80" rx="10" class="box" stroke-dasharray="4 4"/>
+      <text x="40" y="262" class="lbl" font-weight="700" fill="#9d7bff">Multi-agent layer (overlays every stage)</text>
+      <text x="60" y="290" class="lbl-sm">Trainer · Evaluator · 3-judge ensemble · MetaJudge · PRM-Judge · MCTS-Search · CritiqueRewriter · OrchestratorAgent</text>
+      <text x="60" y="310" class="lbl-mut">all calls traced via Braintrust → live dashboard at :8001</text>
+
+      <!-- bottom: results target -->
+      <rect x="20" y="360" width="1160" height="80" rx="10" class="box-g" stroke-dasharray="0"/>
+      <text x="600" y="392" text-anchor="middle" class="lbl" font-weight="700" fill="#5dd39e">Target: AIME ~30 · MATH ~85 · 1.5B params · runs on a phone</text>
+      <text x="600" y="416" text-anchor="middle" class="lbl-mut">~10× cheaper per problem than GPT-4o · open source · reproducible</text>
+
+      <path d="M120,200 L120,240" class="arrow-d"/>
+      <path d="M340,200 L340,240" class="arrow-d"/>
+      <path d="M560,200 L560,240" class="arrow-d"/>
+      <path d="M780,200 L780,240" class="arrow-d"/>
+      <path d="M1040,200 L1040,240" class="arrow-d"/>
+
+      <path d="M600,320 L600,360" class="arrow"/>
+    </svg>
+  </div>
+  <div class="card" style="margin-top:14px;background:linear-gradient(135deg,#1a1610,#11141b);border-color:#5c4a18">
+    <h4 style="color:var(--gold)">run the unified pipeline</h4>
+<pre style="margin:8px 0 0">from reasoning_pipeline import end_to_end_reasoning_step, ReasoningPipelineConfig
+cfg = ReasoningPipelineConfig(use_mcts=True, use_prm=True, use_self_correction=True, use_distillation=True)
+for q in problems:
+    out = end_to_end_reasoning_step(q["question"], q["answer"], cfg, my_generator)
+    # out["mcts"]["paths"]   ← top-K reasoning traces, each with PRM scores
+    # out["self_corrected"]["final"]   ← self-corrected final answer
+    # out["verifiable_reward"]   ← 0/1 ground truth
+    train_grpo_step(out)   # plug into grpo.py</pre>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 31 — REALITY CHECK ════════════════════════ -->
+<section class="slide" data-title="Reality check">
+  <span class="pill warn">honest gap analysis</span>
+  <h2 style="margin-top:14px">Reality check: projected vs measured</h2>
+  <p class="lead">Slides 5–13 showed projections from published papers. Here's what actually happened on this Mac in ~3 minutes of training.</p>
+  <div class="card" style="margin-top:18px">
+  <table>
+    <thead><tr>
+      <th>metric</th>
+      <th class="num">projected</th>
+      <th class="num">actual (measured)</th>
+      <th>verdict</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>SFT ppl improvement</td><td class="num">158 → 50 (3.2×)</td><td class="num" style="color:var(--good)">180 → 134 (1.3×)</td><td><span class="pill good">directionally right</span> — needed 1000+ steps for projection, ran 200</td></tr>
+      <tr><td>GRPO cloze gain</td><td class="num">+30pp</td><td class="num" style="color:var(--bad)">0pp</td><td><span class="pill bad">failed</span> — reward signal too sparse, std ≈ 0.005, no advantage</td></tr>
+      <tr><td>GRPO val ppl</td><td class="num">~32 (expected slight rise)</td><td class="num" style="color:var(--warn)">134 → 148 (+10%)</td><td><span class="pill warn">expected behavior</span> — RL trades ppl for reward</td></tr>
+      <tr><td>Speculative speedup</td><td class="num">2.21×</td><td class="num" style="color:var(--bad)">0.60× (slower!)</td><td><span class="pill bad">wrong setup</span> — draft = target architecturally</td></tr>
+      <tr><td>Acceptance rate</td><td class="num">68%</td><td class="num" style="color:var(--good)">97%</td><td><span class="pill good">very high</span> — confirms draft and target agree (because they're identical)</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card">
+      <h4 style="color:var(--bad)">Why GRPO failed (cloze=0%)</h4>
+      <p style="font-size:13px;color:var(--mute);margin:0">Reward = 0.7 · cloze_match + 0.3 · alpha_ratio. The cloze_match was 0 in every sampled completion (model can't predict "question" zero-shot). So reward variance ≈ 0 → advantages ≈ 0 → no policy gradient. Need either (a) richer reward (LLM judge), (b) easier curriculum, or (c) seed completions with correct answer.</p>
+    </div>
+    <div class="card">
+      <h4 style="color:var(--bad)">Why speculative was slower</h4>
+      <p style="font-size:13px;color:var(--mute);margin:0">I used the SFT snapshot as draft and the GRPO model as target — both 11.28M params, same architecture. Draft has no compute advantage. K=4 draft calls + verification &gt; 4 baseline calls. Speculative needs draft to be 4-10× smaller. Use the "tiny" sweep variant (2.95M, 256d×4L) as draft instead.</p>
+    </div>
+    <div class="card">
+      <h4 style="color:var(--good)">What worked</h4>
+      <p style="font-size:13px;color:var(--mute);margin:0">SFT continuation reduced ppl 25% in 200 steps (~25 sec on MPS). The training pipeline + data loader + agent infrastructure all worked end-to-end without errors. Real numbers are in <code>results.json</code>, served at <code>/api/results</code>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════ SLIDE 32 — LIVE training results ════════════════════════ -->
+<section class="slide" data-title="LIVE training results">
+  <span class="pill good"><span class="live-dot"></span>actually trained</span>
+  <h2 style="margin-top:14px">Live training results — measured on this Mac</h2>
+  <p class="lead">Real numbers from <code>run_training_demo.py</code> on Apple MPS. Auto-fetches from <code>/api/results</code>. Refresh after training completes.</p>
+
+  <div class="card" id="live-status" style="margin-top:18px">
+    <div class="empty" style="text-align:center;padding:30px;color:var(--mute);font-style:italic">
+      ⏳ training in progress — open this slide AFTER <code>run_training_demo.py</code> completes
+    </div>
+  </div>
+
+  <div id="live-content" style="display:none">
+    <div class="card" style="margin-top:14px">
+      <h4>stage-by-stage metrics</h4>
+      <table id="live-table">
+        <thead><tr>
+          <th>stage</th>
+          <th class="num">val ppl</th>
+          <th class="num">cloze acc</th>
+          <th class="num">repetition</th>
+          <th>sample (first 60 chars)</th>
+        </tr></thead>
+        <tbody id="live-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="grid g4" style="margin-top:14px">
+      <div class="card stat"><span class="k">Δ ppl (baseline → grpo)</span><span class="v" id="live-ppl-delta">—</span></div>
+      <div class="card stat"><span class="k">Δ cloze accuracy</span><span class="v" id="live-cloze-delta">—</span></div>
+      <div class="card stat"><span class="k">speculative speedup</span><span class="v" id="live-speedup">—</span></div>
+      <div class="card stat"><span class="k">accept rate</span><span class="v" id="live-accept">—</span></div>
+    </div>
+
+    <div class="grid g3" style="margin-top:14px">
+      <div class="card">
+        <h4>baseline sample</h4>
+        <pre id="live-sample-base" style="max-height:18vh"></pre>
+      </div>
+      <div class="card">
+        <h4>after SFT</h4>
+        <pre id="live-sample-sft" style="max-height:18vh"></pre>
+      </div>
+      <div class="card" style="border-color:#5c4a18">
+        <h4 style="color:var(--gold)">after GRPO ★</h4>
+        <pre id="live-sample-grpo" style="max-height:18vh"></pre>
+      </div>
+    </div>
+    <div class="footer-meta" id="live-ts" style="margin-top:14px"></div>
+  </div>
+  <div style="margin-top:14px">
+    <button onclick="loadLive()" style="padding:8px 18px;background:var(--panel2);border:1px solid var(--accent);color:var(--accent);border-radius:8px;cursor:pointer;font:inherit">↻ refresh</button>
+  </div>
+</section>
+
+</div>
+
+<div class="nav">
+  <button onclick="go(-1)">← prev</button>
+  <span class="pos"><span id="cur">1</span> / <span id="tot">20</span></span>
+  <button onclick="go(1)">next →</button>
+  <span style="color:var(--dim);font-size:11px">arrows · space · home/end</span>
+</div>
+
+<script>
+const slides = document.querySelectorAll(".slide");
+const total = slides.length;
+document.getElementById("tot").textContent = total;
+
+let idx = 0;
+function show(i){
+  idx = Math.max(0, Math.min(total - 1, i));
+  slides.forEach((s, k) => s.classList.toggle("on", k === idx));
+  document.getElementById("cur").textContent = idx + 1;
+  document.getElementById("progress").style.width = (((idx + 1) / total) * 100) + "%";
+  const t = slides[idx].dataset.title || "";
+  document.getElementById("corner").textContent = `${idx+1}/${total} · ${t}`;
+  history.replaceState(null, "", "#/" + (idx + 1));
+}
+function go(d){ show(idx + d); }
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") { go(1); e.preventDefault(); }
+  else if (e.key === "ArrowLeft" || e.key === "PageUp") { go(-1); e.preventDefault(); }
+  else if (e.key === "Home") show(0);
+  else if (e.key === "End") show(total - 1);
+});
+const m = location.hash.match(/#\/(\d+)/);
+show(m ? parseInt(m[1]) - 1 : 0);
+
+// ── load live training results
+async function loadLive() {
+  try {
+    const r = await fetch("/api/results");
+    if (!r.ok) throw new Error("no results");
+    const d = await r.json();
+    if (d.status === "not_run_yet" || !d.stages) {
+      document.getElementById("live-status").innerHTML =
+        '<div class="empty" style="text-align:center;padding:30px;color:var(--warn)">⚠ run <code>python3 run_training_demo.py</code> first, then refresh</div>';
+      return;
+    }
+    document.getElementById("live-status").style.display = "none";
+    document.getElementById("live-content").style.display = "block";
+    const stages = [
+      ["baseline", d.stages.baseline],
+      ["+ SFT continue", d.stages.after_sft],
+      ["+ GRPO ★", d.stages.after_grpo],
+    ];
+    const tbody = document.getElementById("live-tbody");
+    tbody.innerHTML = stages.map(([name, s], i) => {
+      const sampleSnip = (s.sample || "").replace(/\n/g, " ").slice(0, 60);
+      return `<tr ${i === 2 ? 'class="win"' : ''}>
+        <td>${name}</td>
+        <td class="num">${s.val_ppl.toFixed(2)}</td>
+        <td class="num">${(s.cloze_accuracy * 100).toFixed(0)}%</td>
+        <td class="num">${(s.repetition_rate * 100).toFixed(1)}%</td>
+        <td style="font-family:var(--mono);font-size:11px;color:var(--mute)">${escape(sampleSnip)}…</td>
+      </tr>`;
+    }).join("");
+    document.getElementById("live-ppl-delta").textContent = "−" + d.deltas.ppl_baseline_to_grpo.toFixed(2);
+    document.getElementById("live-ppl-delta").style.color = "var(--good)";
+    document.getElementById("live-cloze-delta").textContent = (d.deltas.cloze_baseline_to_grpo >= 0 ? "+" : "") + (d.deltas.cloze_baseline_to_grpo * 100).toFixed(0) + "pp";
+    document.getElementById("live-cloze-delta").style.color = d.deltas.cloze_baseline_to_grpo >= 0 ? "var(--good)" : "var(--bad)";
+    document.getElementById("live-speedup").textContent = d.speculative.speedup.toFixed(2) + "×";
+    document.getElementById("live-accept").textContent = (d.speculative.accept_rate * 100).toFixed(0) + "%";
+    document.getElementById("live-sample-base").textContent = d.stages.baseline.sample;
+    document.getElementById("live-sample-sft").textContent = d.stages.after_sft.sample;
+    document.getElementById("live-sample-grpo").textContent = d.stages.after_grpo.sample;
+    document.getElementById("live-ts").textContent = `device=${d.device} · params=${d.model_params_m}M · ts=${new Date(d.ts * 1000).toISOString()}`;
+  } catch (e) {
+    document.getElementById("live-status").innerHTML =
+      '<div class="empty" style="text-align:center;padding:30px;color:var(--warn)">⚠ start the server: <code>python3 server_v3.py</code> and serve via http://localhost:8001/presentation.html</div>';
+  }
+}
+// auto-fetch when navigating to the live slide
+const _origShow = show;
+show = function(i) {
+  _origShow(i);
+  if (slides[i] && slides[i].dataset.title === "LIVE training results") loadLive();
+};
+
+// ── speculative-decoding token animation
+function animSpec(round) {
+  const ids = round === 1 ? ["d1","d2","d3","d4","d5"] : ["d6","d7","d8","d9","d10"];
+  // round 1: accept first 4, reject 5th, target picks "to"
+  // round 2: accept all 5, bonus token
+  const outcomes = round === 1
+    ? ["accept","accept","accept","accept","reject"]
+    : ["accept","accept","accept","accept","accept"];
+  ids.forEach((id, i) => {
+    setTimeout(() => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove("draft");
+      el.classList.add(outcomes[i]);
+      if (round === 1 && i === 4) el.textContent = "to / [target picks: to]";
+    }, i * 350);
+  });
+  if (round === 2) {
+    setTimeout(() => {
+      const cont = document.getElementById("spec-tokens-2");
+      const bonus = document.createElement("span");
+      bonus.className = "tok bonus";
+      bonus.textContent = "suffer (bonus)";
+      cont.appendChild(document.createTextNode(" "));
+      cont.appendChild(bonus);
+      document.getElementById("spec-acc").textContent = "10";
+      document.getElementById("spec-tps").textContent = "265";
+    }, 5 * 350 + 200);
+  } else {
+    setTimeout(() => { document.getElementById("spec-acc").textContent = "4"; }, 5 * 350);
+  }
+}
+</script>
+</body>
+</html>

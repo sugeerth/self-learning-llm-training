@@ -1,0 +1,67 @@
+Device: mps  bf16: True
+
+=== baseline ===
+  [baseline] step   0/200  loss 10.9010  lr 1.50e-05
+  [baseline] step  50/200  loss 5.8893  lr 2.82e-04
+  [baseline] step 100/200  loss 4.8470  lr 1.88e-04
+  [baseline] step 150/200  loss 4.6730  lr 7.82e-05
+  → val_loss=5.6636  ppl=288.19  params=9.44M  9346 tok/s
+
+=== no-GQA (full MHA) ===
+  [no-GQA (full MHA)] step   0/200  loss 10.8496  lr 1.50e-05
+  [no-GQA (full MHA)] step  50/200  loss 6.2954  lr 2.82e-04
+  [no-GQA (full MHA)] step 100/200  loss 4.6085  lr 1.88e-04
+  [no-GQA (full MHA)] step 150/200  loss 5.0111  lr 7.82e-05
+  → val_loss=5.1278  ppl=168.64  params=10.62M  7658 tok/s
+
+=== shallow-wide (4L x 512d) ===
+  [shallow-wide (4L x 512d)] step   0/200  loss 10.8669  lr 1.50e-05
+  [shallow-wide (4L x 512d)] step  50/200  loss 5.4227  lr 2.82e-04
+  [shallow-wide (4L x 512d)] step 100/200  loss 4.6725  lr 1.88e-04
+  [shallow-wide (4L x 512d)] step 150/200  loss 4.2298  lr 7.82e-05
+  → val_loss=5.0633  ppl=158.12  params=11.28M  5346 tok/s
+
+=== high-LR (6e-4) ===
+  [high-LR (6e-4)] step   0/200  loss 10.9010  lr 3.00e-05
+  [high-LR (6e-4)] step  50/200  loss 6.2138  lr 5.64e-04
+  [high-LR (6e-4)] step 100/200  loss 4.4378  lr 3.77e-04
+  [high-LR (6e-4)] step 150/200  loss 4.0312  lr 1.56e-04
+  → val_loss=5.1766  ppl=177.09  params=9.44M  5376 tok/s
+
+=== untied embeddings ===
+  [untied embeddings] step   0/200  loss 10.9324  lr 1.50e-05
+  [untied embeddings] step  50/200  loss 5.1571  lr 2.82e-04
+  [untied embeddings] step 100/200  loss 4.3344  lr 1.88e-04
+  [untied embeddings] step 150/200  loss 3.9936  lr 7.82e-05
+  → val_loss=5.3891  ppl=219.00  params=48.08M  5239 tok/s
+
+=== deep-narrow (10L x 320d) ===
+  [deep-narrow (10L x 320d)] step   0/200  loss 10.8713  lr 1.50e-05
+  [deep-narrow (10L x 320d)] step  50/200  loss 5.5093  lr 2.82e-04
+  [deep-narrow (10L x 320d)] step 100/200  loss 4.8937  lr 1.88e-04
+  [deep-narrow (10L x 320d)] step 150/200  loss 5.5784  lr 7.82e-05
+  → val_loss=5.4483  ppl=232.37  params=11.07M  4812 tok/s
+
+=== combo: untied + high-LR ===
+  [combo: untied + high-LR] step   0/200  loss 10.9315  lr 3.00e-05
+  [combo: untied + high-LR] step  50/200  loss 4.9358  lr 5.64e-04
+  [combo: untied + high-LR] step 100/200  loss 4.3009  lr 3.77e-04
+  [combo: untied + high-LR] step 150/200  loss 5.6348  lr 1.56e-04
+  → val_loss=5.1639  ppl=174.84  params=48.08M  5445 tok/s
+
+=== tiny (256d x 4L) ===
+  [tiny (256d x 4L)] step   0/200  loss 10.7593  lr 3.00e-05
+  [tiny (256d x 4L)] step  50/200  loss 4.2387  lr 5.64e-04
+  [tiny (256d x 4L)] step 100/200  loss 5.8389  lr 3.77e-04
+  [tiny (256d x 4L)] step 150/200  loss 3.6700  lr 1.56e-04
+  → val_loss=5.2821  ppl=196.79  params=2.95M  7571 tok/s
+
+=== long-context (seq=256) ===
+  [long-context (seq=256)] step   0/200  loss 10.8972  lr 1.50e-05
+  [long-context (seq=256)] step  50/200  loss 5.2354  lr 2.82e-04
+  [long-context (seq=256)] step 100/200  loss 4.7672  lr 1.88e-04
+  [long-context (seq=256)] step 150/200  loss 3.4977  lr 7.82e-05
+  → val_loss=5.3992  ppl=221.23  params=9.44M  5288 tok/s
+
+🏆 Winner: shallow-wide (4L x 512d)  (val_loss=5.0633  ppl=158.12)
+Saved → /Users/fullfocus/llm_training/experiments.json

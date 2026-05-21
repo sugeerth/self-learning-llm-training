@@ -1,0 +1,46 @@
+# Secrets
+.env
+.env.*
+!.env.example
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+
+# Model artifacts
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.h5
+*.onnx
+*.gguf
+checkpoints/
+
+# Large files (>50MB) — excluded explicitly
+ckpt.pt
+
+# Experiment tracking / logs
+wandb/
+ray_results/
+.ipynb_checkpoints/
+*.log
+
+# Build output
+dist/
+build/
+.next/
