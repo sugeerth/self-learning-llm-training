@@ -1,0 +1,72 @@
+{
+  "device": "mps",
+  "params_m": 9.44,
+  "weights_mb": 115.04,
+  "val_loss": 6.691403465270996,
+  "perplexity": 805.4518830049756,
+  "completion_accuracy": 0.4,
+  "completion_detail": [
+    {
+      "prompt": "To be, or not to be, that is the ",
+      "correct": "question",
+      "picked": "answer",
+      "scores": {
+        "question": -14.384626388549805,
+        "answer": -13.310818672180176,
+        "problem": -17.981525421142578,
+        "apple": -18.13034439086914
+      }
+    },
+    {
+      "prompt": "All the world's a ",
+      "correct": "stage",
+      "picked": "stone",
+      "scores": {
+        "stage": -13.604114532470703,
+        "store": -13.458229064941406,
+        "stone": -9.136619567871094,
+        "stag": -10.70792293548584
+      }
+    },
+    {
+      "prompt": "Romeo, Romeo, wherefore art thou ",
+      "correct": "Romeo",
+      "picked": "Romeo",
+      "scores": {
+        "Romeo": -3.062078626205524,
+        "Hamlet": -18.464762687683105,
+        "Caesar": -7.984836220741272,
+        "Brutus": -9.631452878316244
+      }
+    },
+    {
+      "prompt": "What light through yonder window ",
+      "correct": "breaks",
+      "picked": "shines",
+      "scores": {
+        "breaks": -15.244332313537598,
+        "shines": -8.604769229888916,
+        "falls": -15.035260200500488,
+        "stops": -9.606377363204956
+      }
+    },
+    {
+      "prompt": "Friends, Romans, countrymen, lend me your ",
+      "correct": "ears",
+      "picked": "ears",
+      "scores": {
+        "ears": -7.64346981048584,
+        "eyes": -10.619378089904785,
+        "swords": -11.022014617919922,
+        "gold": -16.47713279724121
+      }
+    }
+  ],
+  "throughput": {
+    "forward_tok_per_sec": 44617.960824197144,
+    "batch": 4,
+    "seq_len": 256
+  },
+  "sample_prompt": "ROMEO:\n",
+  "sample_output": "ROMEO:\nO, I am Romeo, and even now 'tis no place of\nthyself for thine.\n\nJULIET:\nGood brother, I will.\n\nMARIANA:\nGive me this hour.\n\nDUKE VINCENTIO:\nWhat noise?'s this well; with him to be? Tell her,\nSo he did look on him"
+}

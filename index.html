@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Laptop LLM — live dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root {
+    --bg: #0b1020; --panel: #121a33; --ink: #e8ecf7; --muted: #8a93b2;
+    --accent: #7cf5c4; --warn: #f7c873; --bad: #ff7a90;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, sans-serif;
+         background: var(--bg); color: var(--ink); }
+  header { padding: 22px 28px; border-bottom: 1px solid #1f2a4e;
+           display: flex; justify-content: space-between; align-items: center; }
+  header h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: .3px; }
+  header .tag { font-family: var(--mono); color: var(--muted); font-size: 12px; }
+  main { padding: 24px; display: grid; gap: 18px;
+         grid-template-columns: repeat(12, 1fr); max-width: 1400px; margin: 0 auto; }
+  .card { background: var(--panel); border: 1px solid #1f2a4e; border-radius: 12px;
+          padding: 16px 18px; }
+  .card h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase;
+             letter-spacing: 1.2px; color: var(--muted); font-weight: 600; }
+  .span-4 { grid-column: span 4; } .span-6 { grid-column: span 6; }
+  .span-8 { grid-column: span 8; } .span-12 { grid-column: span 12; }
+  @media (max-width: 900px) { .span-4,.span-6,.span-8 { grid-column: span 12; } }
+  .kpi { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi div { background: #0e1530; padding: 10px 12px; border-radius: 8px; }
+  .kpi .label { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+  .kpi .val { font-family: var(--mono); font-size: 18px; margin-top: 2px; color: var(--accent); }
+  textarea, input { width: 100%; background: #0e1530; color: var(--ink);
+    border: 1px solid #1f2a4e; border-radius: 8px; padding: 10px;
+    font-family: var(--mono); font-size: 13px; }
+  button { background: var(--accent); color: #061323; border: 0; padding: 9px 14px;
+    border-radius: 8px; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: wait; }
+  pre { background: #0e1530; padding: 12px; border-radius: 8px; white-space: pre-wrap;
+        font-family: var(--mono); font-size: 12.5px; max-height: 420px; overflow: auto;
+        color: #cbd3ee; }
+  .row { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+  .row label { font-size: 12px; color: var(--muted); }
+  .pill { display: inline-block; background: #0e1530; color: var(--accent);
+          padding: 2px 8px; border-radius: 999px; font-family: var(--mono);
+          font-size: 11px; margin-right: 6px; border: 1px solid #1f2a4e; }
+  ul.techs { margin: 0; padding-left: 18px; color: #cbd3ee; font-size: 13px; line-height: 1.6; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%;
+         background: var(--accent); margin-right:6px; vertical-align: middle; }
+  .dot.idle { background: var(--muted); }
+
+  /* ---------- Model Builder ---------- */
+  .builder { display: grid; grid-template-columns: 1fr 320px; gap: 18px; }
+  @media (max-width: 1100px) { .builder { grid-template-columns: 1fr; } }
+  .globals { display:flex; flex-wrap:wrap; gap:12px; align-items:center;
+             padding:10px; background:#0e1530; border-radius:8px; margin-bottom:12px; }
+  .globals label { font-size:11px; color:var(--muted); display:flex; flex-direction:column; gap:2px; }
+  .globals input, .globals select { width:90px; padding:6px 8px; font-size:12px; }
+  .layers { display:flex; flex-direction:column; gap:10px; min-height:60px; }
+  .layer {
+    background:#0e1530; border:1px solid #1f2a4e; border-radius:10px;
+    padding:10px 12px; cursor: grab;
+    display:grid; grid-template-columns: 28px 1fr auto; gap:10px; align-items:center;
+    transition: background .12s, transform .12s, opacity .12s;
+  }
+  .layer:hover { background:#131a3a; }
+  .layer.dragging { opacity:.35; }
+  .layer.drop-target { border-color: var(--accent); background:#13243a; }
+  .layer-idx { font-family:var(--mono); color:var(--muted); font-size:12px;
+               text-align:center; user-select:none; }
+  .slots { display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; }
+  .slot { display:flex; flex-direction:column; gap:3px; }
+  .slot-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;
+                display:flex; justify-content:space-between; align-items:center; }
+  .slot-help { cursor:pointer; color:var(--muted); font-weight:bold;
+               width:16px; height:16px; border-radius:50%; border:1px solid #1f2a4e;
+               display:inline-flex; align-items:center; justify-content:center;
+               font-size:10px; line-height:1; background:#0b1020; }
+  .slot-help:hover { color:var(--accent); border-color:var(--accent); }
+  .slot select { padding:5px 6px; font-size:12px; background:#0b1020; border-radius:6px;
+                 border:1px solid #1f2a4e; color:var(--ink); }
+  .layer-remove { background:none; color:var(--bad); border:none; padding:6px 8px;
+                  font-size:14px; cursor:pointer; }
+  .add-layer { background:#1f2a4e; color:var(--ink); width:100%;
+               padding:8px; margin-top:8px; border-radius:8px; font-size:12px; }
+  .run-bar { display:flex; gap:8px; align-items:center; margin-top:14px; flex-wrap:wrap; }
+  .run-bar input { width:80px; }
+
+  .builder-side { background:#0e1530; border-radius:10px; padding:12px;
+                  display:flex; flex-direction:column; gap:10px; max-height: 560px; overflow:auto; }
+  .preview { font-family:var(--mono); font-size:11px; color:#cbd3ee;
+             background:#0b1020; padding:10px; border-radius:6px; max-height:200px; overflow:auto; }
+  .progress-box { font-family:var(--mono); font-size:12px; color:#cbd3ee; background:#0b1020;
+                  padding:10px; border-radius:6px; }
+  .progress-bar { height:6px; background:#1f2a4e; border-radius:3px; overflow:hidden; margin-top:6px; }
+  .progress-bar > div { height:100%; background:var(--accent); width:0%; transition:width .3s; }
+
+  /* ---------- Details drawer ---------- */
+  .drawer-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.55);
+                     opacity:0; pointer-events:none; transition:opacity .2s; z-index:50; }
+  .drawer { position:fixed; top:0; right:0; height:100%; width:420px; max-width:90vw;
+            background:var(--panel); border-left:1px solid #1f2a4e;
+            transform: translateX(100%); transition: transform .25s;
+            z-index:60; padding:20px 22px; overflow-y:auto; box-shadow:-10px 0 30px rgba(0,0,0,.4); }
+  .drawer.open { transform: translateX(0); }
+  .drawer-backdrop.open { opacity:1; pointer-events:auto; }
+  .drawer h3 { margin:0 0 8px; font-size:16px; }
+  .drawer .d-row { margin:12px 0; }
+  .drawer .d-row b { display:block; color:var(--muted); font-size:11px;
+                     text-transform:uppercase; letter-spacing:.8px; margin-bottom:4px; }
+  .drawer-close { background:#1f2a4e; color:var(--ink); font-size:12px; padding:4px 10px; border-radius:6px; }
+  .drawer code { font-family:var(--mono); background:#0e1530; padding:2px 5px; border-radius:4px; font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1><span id="dot" class="dot idle"></span>Laptop LLM — live dashboard</h1>
+    <div class="tag">LLaMA-style · RoPE · GQA · SwiGLU · RMSNorm · bf16 · SDPA · trained on MPS</div>
+  </div>
+  <div class="tag" id="device">device: —</div>
+</header>
+
+<div id="drawerBackdrop" class="drawer-backdrop"></div>
+<aside id="drawer" class="drawer">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <h3 id="drawerTitle">—</h3>
+    <button class="drawer-close" id="drawerClose">close</button>
+  </div>
+  <div id="drawerBody"></div>
+</aside>
+
+<main>
+  <section class="card span-4">
+    <h2>Model</h2>
+    <div class="kpi">
+      <div><div class="label">Params</div><div class="val" id="kParams">—</div></div>
+      <div><div class="label">Weights</div><div class="val" id="kWeights">—</div></div>
+      <div><div class="label">Val loss</div><div class="val" id="kLoss">—</div></div>
+      <div><div class="label">Perplexity</div><div class="val" id="kPpl">—</div></div>
+      <div><div class="label">Completion acc.</div><div class="val" id="kAcc">—</div></div>
+      <div><div class="label">Fwd tok/s</div><div class="val" id="kTps">—</div></div>
+    </div>
+  </section>
+
+  <section class="card span-8">
+    <h2>Training loss <span id="liveBadge" style="font-size:11px;color:var(--muted);margin-left:8px">idle</span></h2>
+    <canvas id="chart" height="110"></canvas>
+    <div class="row" style="flex-wrap:wrap;justify-content:space-between">
+      <div>
+        <span class="pill" id="stepPill">step —</span>
+        <span class="pill" id="tokPill">— tok/s</span>
+        <span class="pill" id="lrPill">lr —</span>
+        <span class="pill" id="gnormPill">gnorm —</span>
+      </div>
+      <div>
+        <button id="trainBtn">▶ Start training</button>
+        <button id="stopBtn" style="background:#ff7a90">■ Stop</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card span-6">
+    <h2>Chat with the model</h2>
+    <textarea id="prompt" rows="3" placeholder="Try:  ROMEO:&#10;Shall I compare thee to a summer's day?">ROMEO:
+</textarea>
+    <div class="row">
+      <label>tokens <input id="maxTok" type="number" value="80" style="width:70px"/></label>
+      <label>temp <input id="temp" type="number" step="0.1" value="0.8" style="width:70px"/></label>
+      <button id="genBtn">Generate</button>
+    </div>
+    <pre id="genOut" style="margin-top:10px"></pre>
+  </section>
+
+  <section class="card span-6">
+    <h2>Agent — tools + LLM</h2>
+    <input id="goal" placeholder="compute 17 * (9 + 4) - 3" />
+    <div class="row">
+      <button id="agentBtn">Run agent</button>
+      <span class="tag" style="color:var(--muted);font-family:var(--mono);font-size:11px">
+        tools: calculator · search_corpus · word_count · llm_complete
+      </span>
+    </div>
+    <pre id="agentOut" style="margin-top:10px"></pre>
+  </section>
+
+  <section class="card span-6">
+    <h2>Optimizations applied</h2>
+    <ul class="techs">
+      <li><b>Architecture:</b> RMSNorm, RoPE positional encoding, SwiGLU FFN, Grouped-Query Attention (6 Q heads / 2 KV heads), pre-norm residuals, tied embed↔LM-head.</li>
+      <li><b>Kernels:</b> PyTorch SDPA (Flash/MemEff backends), FFN hidden dim padded to multiples of 64.</li>
+      <li><b>Training:</b> bf16 autocast on MPS, AdamW with decoupled weight decay on 2D params only, gradient accumulation (effective batch 16k tokens), grad clip at 1.0, cosine LR + linear warmup, GPT-2 residual-projection init scaling.</li>
+      <li><b>Data:</b> pre-tokenized to uint16 bin (nanoGPT-style), mmap loader, random-window sampling.</li>
+      <li><b>Agent:</b> tool harness with deterministic planner, safe-sandboxed calculator, corpus grep, LLM-backed creative completion, structured trace.</li>
+    </ul>
+  </section>
+
+  <section class="card span-6">
+    <h2>Benchmarks</h2>
+    <pre id="benchOut">loading…</pre>
+  </section>
+
+  <section class="card span-12">
+    <h2>Model Builder — drag layers, swap components, run real training
+      <span id="builderHint" style="font-size:11px;color:var(--muted);margin-left:8px;text-transform:none;letter-spacing:0">
+        click the <b style="color:var(--accent)">?</b> on any component to learn what it does
+      </span>
+    </h2>
+
+    <div class="builder">
+      <div>
+        <div class="globals">
+          <label>d_model <input id="gb_dmodel" type="number" value="256" min="64" step="64"/></label>
+          <label>n_heads <input id="gb_nheads" type="number" value="4" min="1"/></label>
+          <label>n_kv_heads (GQA) <input id="gb_kvheads" type="number" value="2" min="1"/></label>
+          <label>seq_len <input id="gb_seq" type="number" value="128" min="32" step="32"/></label>
+          <label>pos_type
+            <select id="gb_pos">
+              <option value="rope">RoPE</option>
+              <option value="learned">learned</option>
+            </select>
+          </label>
+          <label>tied embed
+            <select id="gb_tie">
+              <option value="true">yes</option>
+              <option value="false">no</option>
+            </select>
+          </label>
+          <button class="slot-help" data-k="rope" title="pos type info">?</button>
+          <button class="slot-help" data-k="tied" title="tied embed info">?</button>
+        </div>
+
+        <div id="layers" class="layers"></div>
+        <button id="addLayer" class="add-layer">+ Add layer</button>
+
+        <div class="run-bar">
+          <label>seeds <input id="gb_seeds" type="text" value="1,2,3" style="width:80px"/></label>
+          <label>steps <input id="gb_steps" type="number" value="150" min="20"/></label>
+          <label>lr <input id="gb_lr" type="text" value="3e-4"/></label>
+          <label>name <input id="gb_name" type="text" value="my config" style="width:140px"/></label>
+          <button id="gb_run">▶ Train this config</button>
+          <button class="slot-help" data-k="seeds" title="why multi-seed?">?</button>
+          <span id="gb_status" style="color:var(--muted);font-family:var(--mono);font-size:12px">idle</span>
+        </div>
+      </div>
+
+      <div class="builder-side">
+        <div>
+          <b style="color:var(--muted);font-size:11px;text-transform:uppercase">Config preview</b>
+          <pre id="gb_preview" class="preview">—</pre>
+        </div>
+        <div>
+          <b style="color:var(--muted);font-size:11px;text-transform:uppercase">Live progress</b>
+          <div id="gb_progress" class="progress-box">
+            <div>status: <span id="gb_pstate">idle</span></div>
+            <div id="gb_pline" style="margin-top:4px">—</div>
+            <div class="progress-bar"><div id="gb_pbar"></div></div>
+          </div>
+        </div>
+        <div>
+          <b style="color:var(--muted);font-size:11px;text-transform:uppercase">Learn more</b>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+            <button class="slot-help" data-k="dpo" style="width:auto;padding:3px 10px;font-size:11px">DPO</button>
+            <button class="slot-help" data-k="rlhf" style="width:auto;padding:3px 10px;font-size:11px">RLHF</button>
+            <button class="slot-help" data-k="sft" style="width:auto;padding:3px 10px;font-size:11px">SFT</button>
+            <button class="slot-help" data-k="bf16" style="width:auto;padding:3px 10px;font-size:11px">bf16</button>
+            <button class="slot-help" data-k="seeds" style="width:auto;padding:3px 10px;font-size:11px">multi-seed</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card span-12">
+    <h2>Architecture — layer-by-layer visibility</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div id="archConfig" style="font-family:var(--mono);font-size:12px;color:#cbd3ee;margin-bottom:10px"></div>
+        <canvas id="archChart" height="80"></canvas>
+        <div style="margin-top:10px">
+          <button id="toggleRepr" style="background:#1f2a4e;color:var(--ink);font-size:11px;padding:4px 10px">show PyTorch repr</button>
+          <pre id="archRepr" style="display:none;font-size:11px;max-height:260px"></pre>
+        </div>
+      </div>
+      <div style="overflow:auto;max-height:420px">
+        <table id="archTable" style="width:100%;border-collapse:collapse;font-size:12px;font-family:var(--mono)">
+          <thead>
+            <tr style="color:var(--muted);text-align:left;position:sticky;top:0;background:var(--panel)">
+              <th style="padding:4px 6px">module</th>
+              <th style="padding:4px 6px">shape</th>
+              <th style="padding:4px 6px">params</th>
+              <th style="padding:4px 6px">kind</th>
+            </tr>
+          </thead>
+          <tbody id="archBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="card span-12">
+    <h2>Experiment sweep — which variant wins & why</h2>
+    <div id="expWinner" style="margin-bottom:10px;color:var(--accent);font-family:var(--mono);font-size:13px">loading…</div>
+    <div style="overflow-x:auto">
+      <table id="expTable" style="width:100%;border-collapse:collapse;font-size:13px;font-family:var(--mono)">
+        <thead>
+          <tr style="color:var(--muted);text-align:left">
+            <th style="padding:6px 8px">rank</th>
+            <th style="padding:6px 8px">variant</th>
+            <th style="padding:6px 8px">params</th>
+            <th style="padding:6px 8px">val loss</th>
+            <th style="padding:6px 8px">perplexity</th>
+            <th style="padding:6px 8px">tok/s</th>
+            <th style="padding:6px 8px">time (s)</th>
+            <th style="padding:6px 8px">lr</th>
+          </tr>
+        </thead>
+        <tbody id="expBody"></tbody>
+      </table>
+    </div>
+    <canvas id="expChart" height="80" style="margin-top:14px"></canvas>
+  </section>
+</main>
+
+<script>
+const fmt = (n, d=2) => n == null ? "—" : Number(n).toLocaleString(undefined, {maximumFractionDigits:d});
+
+const chart = new Chart(document.getElementById("chart"), {
+  type: "line",
+  data: { labels: [], datasets: [
+    { label: "train", data: [], borderColor: "#7cf5c4", tension: .25, pointRadius: 0, borderWidth: 2 },
+    { label: "val",   data: [], borderColor: "#f7c873", tension: .25, pointRadius: 3, borderWidth: 2, spanGaps: true },
+  ]},
+  options: {
+    animation: false, responsive: true,
+    scales: {
+      x: { ticks: { color: "#8a93b2" }, grid: { color: "#1f2a4e" } },
+      y: { ticks: { color: "#8a93b2" }, grid: { color: "#1f2a4e" } },
+    },
+    plugins: { legend: { labels: { color: "#e8ecf7" } } },
+  }
+});
+
+async function pollLog() {
+  try {
+    const r = await fetch("/api/log"); const j = await r.json();
+    const steps = j.events.filter(e => e.event === "step");
+    const evals = j.events.filter(e => e.event === "eval");
+    const start = j.events.find(e => e.event === "start");
+    const final = j.events.find(e => e.event === "final");
+
+    chart.data.labels = steps.map(e => e.step);
+    chart.data.datasets[0].data = steps.map(e => e.loss);
+    const evalMap = Object.fromEntries(evals.map(e => [e.step, e.val_loss]));
+    chart.data.datasets[1].data = steps.map(e => evalMap[e.step] ?? null);
+    chart.update();
+
+    if (start) document.getElementById("device").textContent =
+      "device: " + start.device + " · " + start.params_m + "M params";
+    if (steps.length) {
+      const s = steps.at(-1);
+      document.getElementById("stepPill").textContent = "step " + s.step;
+      document.getElementById("tokPill").textContent = fmt(s.tok_per_sec,0) + " tok/s";
+      document.getElementById("lrPill").textContent = "lr " + s.lr.toExponential(2);
+      document.getElementById("gnormPill").textContent = "gnorm " + fmt(s.gnorm);
+    }
+    document.getElementById("dot").className = "dot" + (final ? " idle" : "");
+  } catch (e) { console.warn(e); }
+}
+
+async function pollBench() {
+  try {
+    const r = await fetch("/api/bench"); const j = await r.json();
+    const out = document.getElementById("benchOut");
+    if (!j.ready) { out.textContent = "run `python3 benchmark.py` to populate"; return; }
+    document.getElementById("kParams").textContent  = j.params_m + "M";
+    document.getElementById("kWeights").textContent = j.weights_mb + " MB";
+    document.getElementById("kLoss").textContent    = fmt(j.val_loss, 3);
+    document.getElementById("kPpl").textContent     = fmt(j.perplexity, 2);
+    document.getElementById("kAcc").textContent     = (j.completion_accuracy*100).toFixed(0) + "%";
+    document.getElementById("kTps").textContent     = fmt(j.throughput.forward_tok_per_sec, 0);
+    out.textContent = JSON.stringify(
+      {perplexity: j.perplexity, completion_accuracy: j.completion_accuracy,
+       throughput: j.throughput, sample: j.sample_output}, null, 2);
+  } catch (e) { document.getElementById("benchOut").textContent = "err: " + e; }
+}
+
+document.getElementById("genBtn").onclick = async () => {
+  const btn = document.getElementById("genBtn"); btn.disabled = true;
+  const body = {
+    prompt: document.getElementById("prompt").value,
+    max_tokens: +document.getElementById("maxTok").value,
+    temperature: +document.getElementById("temp").value,
+  };
+  try {
+    const r = await fetch("/api/generate", {method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify(body)});
+    const j = await r.json();
+    document.getElementById("genOut").textContent = j.full || j.error;
+  } finally { btn.disabled = false; }
+};
+
+document.getElementById("agentBtn").onclick = async () => {
+  const btn = document.getElementById("agentBtn"); btn.disabled = true;
+  const body = { goal: document.getElementById("goal").value };
+  try {
+    const r = await fetch("/api/agent", {method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify(body)});
+    const j = await r.json();
+    document.getElementById("agentOut").textContent = JSON.stringify(j, null, 2);
+  } finally { btn.disabled = false; }
+};
+
+const COLORS = ["#7cf5c4","#f7c873","#ff7a90","#8ab9ff","#c496ff","#ffd27a"];
+let expChart = null;
+
+async function pollExperiments() {
+  try {
+    const r = await fetch("/api/experiments"); const j = await r.json();
+    if (!j.ready) {
+      document.getElementById("expWinner").textContent = "run `python3 experiments.py` to populate (or wait — sweep is running)";
+      return;
+    }
+    document.getElementById("expWinner").textContent = "🏆 " + j.why;
+    const rows = [...j.variants].sort((a,b) => a.val_loss - b.val_loss);
+    const tbody = document.getElementById("expBody");
+    tbody.innerHTML = "";
+    rows.forEach((r, i) => {
+      const tr = document.createElement("tr");
+      tr.style.borderTop = "1px solid #1f2a4e";
+      tr.style.color = i === 0 ? "var(--accent)" : "var(--ink)";
+      tr.innerHTML = `
+        <td style="padding:6px 8px">${i===0?'🥇':i+1}</td>
+        <td style="padding:6px 8px">${r.name}</td>
+        <td style="padding:6px 8px">${r.params_m}M</td>
+        <td style="padding:6px 8px">${r.val_loss.toFixed(4)}</td>
+        <td style="padding:6px 8px">${r.val_ppl.toFixed(2)}</td>
+        <td style="padding:6px 8px">${fmt(r.tok_per_sec,0)}</td>
+        <td style="padding:6px 8px">${r.elapsed_s}</td>
+        <td style="padding:6px 8px">${r.lr.toExponential(1)}</td>`;
+      tbody.appendChild(tr);
+    });
+    const labels = rows[0].loss_curve.map((_,i) => i * 5);
+    const datasets = rows.map((r, i) => ({
+      label: r.name, data: r.loss_curve,
+      borderColor: COLORS[i % COLORS.length], tension: .25, pointRadius: 0, borderWidth: 2,
+    }));
+    if (expChart) { expChart.data.labels = labels; expChart.data.datasets = datasets; expChart.update(); }
+    else {
+      expChart = new Chart(document.getElementById("expChart"), {
+        type: "line", data: { labels, datasets },
+        options: { animation:false, responsive:true,
+          scales: { x:{ticks:{color:"#8a93b2"},grid:{color:"#1f2a4e"},title:{display:true,text:"step",color:"#8a93b2"}},
+                    y:{ticks:{color:"#8a93b2"},grid:{color:"#1f2a4e"},title:{display:true,text:"train loss",color:"#8a93b2"}} },
+          plugins: { legend:{labels:{color:"#e8ecf7"}} }}
+      });
+    }
+  } catch(e) { console.warn(e); }
+}
+
+async function pollTrainStatus() {
+  try {
+    const r = await fetch("/api/train/status"); const j = await r.json();
+    const badge = document.getElementById("liveBadge");
+    const dot = document.getElementById("dot");
+    if (j.running) {
+      badge.textContent = "● LIVE (pid " + j.pid + ")";
+      badge.style.color = "var(--accent)";
+      dot.classList.remove("idle");
+    } else {
+      badge.textContent = "idle";
+      badge.style.color = "var(--muted)";
+      dot.classList.add("idle");
+    }
+  } catch(e) {}
+}
+
+document.getElementById("trainBtn").onclick = async () => {
+  const btn = document.getElementById("trainBtn"); btn.disabled = true;
+  await fetch("/api/train/start", {method:"POST"});
+  btn.disabled = false; pollTrainStatus(); pollLog();
+};
+document.getElementById("stopBtn").onclick = async () => {
+  await fetch("/api/train/stop", {method:"POST"});
+  pollTrainStatus();
+};
+
+const CAT_COLORS = { embedding:"#7cf5c4", attention:"#8ab9ff", ffn:"#f7c873", norm:"#c496ff", other:"#ff7a90" };
+let archChart = null;
+
+async function loadArchitecture() {
+  try {
+    const r = await fetch("/api/architecture"); const j = await r.json();
+    const c = j.config;
+    document.getElementById("archConfig").innerHTML =
+      `<span class="pill">${j.total_params_m}M params</span>` +
+      `<span class="pill">d_model=${c.d_model}</span>` +
+      `<span class="pill">layers=${c.n_layers}</span>` +
+      `<span class="pill">Q heads=${c.n_heads}</span>` +
+      `<span class="pill">KV heads=${c.n_kv_heads}</span>` +
+      `<span class="pill">ctx=${c.max_seq_len}</span>` +
+      `<span class="pill">vocab=${c.vocab_size}</span>` +
+      `<span class="pill">tied=${c.tie_embeddings}</span>`;
+
+    const cats = Object.entries(j.by_category).filter(([,v])=>v>0);
+    const data = {
+      labels: cats.map(([k])=>k),
+      datasets: [{
+        label: "params",
+        data: cats.map(([,v])=>v),
+        backgroundColor: cats.map(([k])=>CAT_COLORS[k]||"#888"),
+      }]
+    };
+    if (archChart) { archChart.data = data; archChart.update(); }
+    else archChart = new Chart(document.getElementById("archChart"), {
+      type: "bar", data,
+      options: { indexAxis:"y", animation:false,
+        plugins:{ legend:{display:false},
+          tooltip:{ callbacks:{ label: ctx => fmt(ctx.parsed.x)+" params  ("+(ctx.parsed.x/j.total_params*100).toFixed(1)+"%)" } } },
+        scales:{ x:{ticks:{color:"#8a93b2",callback:v=>fmt(v,0)},grid:{color:"#1f2a4e"}},
+                 y:{ticks:{color:"#e8ecf7"},grid:{display:false}} } }
+    });
+
+    const body = document.getElementById("archBody");
+    body.innerHTML = "";
+    j.modules.forEach(m => {
+      const tr = document.createElement("tr");
+      tr.style.borderTop = "1px solid #1f2a4e";
+      if (m.tied) tr.style.opacity = "0.5";
+      tr.innerHTML = `
+        <td style="padding:4px 6px">${m.name}${m.tied?' <span style="color:var(--muted)">(tied)</span>':''}</td>
+        <td style="padding:4px 6px;color:${CAT_COLORS[m.category]||'#888'}">${m.shape.join(" × ")||"scalar"}</td>
+        <td style="padding:4px 6px">${fmt(m.params,0)}</td>
+        <td style="padding:4px 6px;color:var(--muted)">${m.category}</td>`;
+      body.appendChild(tr);
+    });
+    document.getElementById("archRepr").textContent = j.repr;
+  } catch(e) { console.warn(e); }
+}
+
+document.getElementById("toggleRepr").onclick = () => {
+  const p = document.getElementById("archRepr");
+  p.style.display = p.style.display === "none" ? "block" : "none";
+};
+
+pollLog(); pollBench(); pollExperiments(); pollTrainStatus(); loadArchitecture();
+setInterval(pollLog, 2000);
+setInterval(pollBench, 5000);
+setInterval(pollExperiments, 5000);
+setInterval(pollTrainStatus, 2000);
+
+/* =================== Details drawer =================== */
+const drawer = document.getElementById("drawer");
+const drawerBackdrop = document.getElementById("drawerBackdrop");
+async function openDetails(key) {
+  try {
+    const r = await fetch("/api/details/" + key);
+    if (!r.ok) { return; }
+    const d = await r.json();
+    document.getElementById("drawerTitle").textContent = d.title;
+    const body = document.getElementById("drawerBody");
+    body.innerHTML = "";
+    const add = (label, val) => {
+      if (!val) return;
+      const div = document.createElement("div");
+      div.className = "d-row";
+      const content = Array.isArray(val) ? val.map(v=>`<code>${v}</code>`).join(" ") : val;
+      div.innerHTML = `<b>${label}</b>${content}`;
+      body.appendChild(div);
+    };
+    add("Summary", d.summary);
+    if (d.formula) add("Formula", `<code style="white-space:pre-wrap">${d.formula}</code>`);
+    add("Used in", d.used_in);
+    add("Trade-offs", d.tradeoffs);
+    drawer.classList.add("open"); drawerBackdrop.classList.add("open");
+  } catch(e) { console.warn(e); }
+}
+document.getElementById("drawerClose").onclick = () => {
+  drawer.classList.remove("open"); drawerBackdrop.classList.remove("open");
+};
+drawerBackdrop.onclick = () => {
+  drawer.classList.remove("open"); drawerBackdrop.classList.remove("open");
+};
+// event delegation for all ? buttons (current + future)
+document.body.addEventListener("click", (e) => {
+  const b = e.target.closest(".slot-help");
+  if (b && b.dataset.k) { e.preventDefault(); openDetails(b.dataset.k); }
+});
+
+/* =================== Model Builder =================== */
+const SLOT_DEFS = {
+  norm:     [["rms","RMSNorm"], ["layer","LayerNorm"]],
+  attn:     [["gqa","GQA"], ["mha","MHA"], ["mqa","MQA"]],
+  ffn:      [["swiglu","SwiGLU"], ["gelu","GELU"]],
+  residual: [["pre","Pre-norm"], ["post","Post-norm"]],
+};
+
+// default: 4 identical layers
+let layerState = Array.from({length: 4}, () => ({
+  norm:"rms", attn:"gqa", ffn:"swiglu", residual:"pre"
+}));
+
+function renderLayers() {
+  const container = document.getElementById("layers");
+  container.innerHTML = "";
+  layerState.forEach((spec, i) => {
+    const el = document.createElement("div");
+    el.className = "layer";
+    el.draggable = true;
+    el.dataset.idx = i;
+    let slotsHTML = '<div class="slots">';
+    Object.entries(SLOT_DEFS).forEach(([slot, opts]) => {
+      slotsHTML += `
+        <div class="slot">
+          <div class="slot-label">
+            ${slot}
+            <span class="slot-help" data-k="${spec[slot]}" title="what is ${spec[slot]}?">?</span>
+          </div>
+          <select data-slot="${slot}">
+            ${opts.map(([v,lbl]) => `<option value="${v}" ${v===spec[slot]?'selected':''}>${lbl}</option>`).join("")}
+          </select>
+        </div>`;
+    });
+    slotsHTML += '</div>';
+    el.innerHTML = `
+      <div class="layer-idx">⋮⋮<br>${i+1}</div>
+      ${slotsHTML}
+      <button class="layer-remove" title="remove layer">✕</button>`;
+    // change handler
+    el.querySelectorAll("select[data-slot]").forEach(sel => {
+      sel.onchange = () => {
+        layerState[i][sel.dataset.slot] = sel.value;
+        // keep the `?` button data-k in sync
+        const help = sel.parentElement.querySelector(".slot-help");
+        if (help) help.dataset.k = sel.value;
+        updatePreview();
+      };
+    });
+    el.querySelector(".layer-remove").onclick = () => {
+      if (layerState.length <= 1) return;
+      layerState.splice(i, 1); renderLayers(); updatePreview();
+    };
+    // drag and drop
+    el.addEventListener("dragstart", (e) => {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(i));
+      el.classList.add("dragging");
+    });
+    el.addEventListener("dragend", () => el.classList.remove("dragging"));
+    el.addEventListener("dragover", (e) => { e.preventDefault(); el.classList.add("drop-target"); });
+    el.addEventListener("dragleave", () => el.classList.remove("drop-target"));
+    el.addEventListener("drop", (e) => {
+      e.preventDefault(); el.classList.remove("drop-target");
+      const src = +e.dataTransfer.getData("text/plain");
+      const dst = +el.dataset.idx;
+      if (src === dst) return;
+      const [moved] = layerState.splice(src, 1);
+      layerState.splice(dst, 0, moved);
+      renderLayers(); updatePreview();
+    });
+    container.appendChild(el);
+  });
+}
+
+function buildConfig() {
+  return {
+    vocab_size: 50304,
+    d_model: +document.getElementById("gb_dmodel").value,
+    n_heads: +document.getElementById("gb_nheads").value,
+    n_kv_heads: +document.getElementById("gb_kvheads").value,
+    n_layers: layerState.length,
+    max_seq_len: +document.getElementById("gb_seq").value,
+    pos_type: document.getElementById("gb_pos").value,
+    tie_embeddings: document.getElementById("gb_tie").value === "true",
+    layers: layerState.map(s => ({...s})),
+  };
+}
+
+function updatePreview() {
+  const cfg = buildConfig();
+  document.getElementById("gb_preview").textContent = JSON.stringify(cfg, null, 2);
+}
+
+document.getElementById("addLayer").onclick = () => {
+  layerState.push({norm:"rms", attn:"gqa", ffn:"swiglu", residual:"pre"});
+  renderLayers(); updatePreview();
+};
+["gb_dmodel","gb_nheads","gb_kvheads","gb_seq","gb_pos","gb_tie"].forEach(id => {
+  document.getElementById(id).addEventListener("change", updatePreview);
+});
+
+document.getElementById("gb_run").onclick = async () => {
+  const btn = document.getElementById("gb_run"); btn.disabled = true;
+  const body = {
+    name: document.getElementById("gb_name").value || "custom",
+    config: buildConfig(),
+    lr: Number(document.getElementById("gb_lr").value),
+    seeds: document.getElementById("gb_seeds").value.split(",").map(s => +s.trim()).filter(n => !isNaN(n)),
+    steps: +document.getElementById("gb_steps").value,
+  };
+  try {
+    const r = await fetch("/api/experiment/run", {
+      method:"POST", headers:{"content-type":"application/json"},
+      body: JSON.stringify(body)
+    });
+    const j = await r.json();
+    document.getElementById("gb_status").textContent = j.status === "started" ?
+      `queued: ${j.name} (${j.seeds.length} seeds × ${j.steps} steps)` : (j.error || JSON.stringify(j));
+  } finally {
+    setTimeout(() => { btn.disabled = false; }, 1500);
+  }
+};
+
+async function pollExpProgress() {
+  try {
+    const r = await fetch("/api/experiment/progress"); const j = await r.json();
+    document.getElementById("gb_pstate").textContent = j.state;
+    const line = document.getElementById("gb_pline");
+    const bar = document.getElementById("gb_pbar");
+    if (j.state === "running" && j.total) {
+      const seedProg = ((j.seed_idx || 0) + (j.step / j.total)) / (j.n_seeds || 1);
+      bar.style.width = (seedProg * 100).toFixed(1) + "%";
+      line.textContent = `seed ${(j.seed_idx||0)+1}/${j.n_seeds}  step ${j.step}/${j.total}  loss ${j.loss ?? "—"}`;
+    } else if (j.state === "done") {
+      bar.style.width = "100%";
+      line.innerHTML = `✅ ${j.name} — val_loss <b style="color:var(--accent)">${j.val_loss_mean} ± ${j.val_loss_std}</b> · ppl ${j.val_ppl_mean} ± ${j.val_ppl_std} · ${j.params_m}M`;
+    } else if (j.state === "error") {
+      bar.style.width = "0%";
+      line.innerHTML = `<span style="color:var(--bad)">error: ${j.error}</span>`;
+    } else if (j.state === "saving") {
+      line.textContent = "saving results…";
+    } else {
+      bar.style.width = "0%"; line.textContent = "—";
+    }
+  } catch(e) {}
+}
+setInterval(pollExpProgress, 1500);
+
+renderLayers(); updatePreview();
+</script>
+</body>
+</html>

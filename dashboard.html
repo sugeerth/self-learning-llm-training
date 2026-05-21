@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Self-Learning LLM · Multi-Agent Dashboard</title>
+<style>
+  :root{
+    --bg:#0a0c12; --panel:#11141b; --panel2:#161a23; --line:#222836;
+    --ink:#e7ecf3; --mute:#8a93a6; --dim:#5d6e96;
+    --accent:#7aa2ff; --accent2:#9d7bff;
+    --good:#5dd39e; --warn:#ffb454; --bad:#ff6b6b; --gold:#ffd166;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif}
+  a{color:var(--accent);text-decoration:none}
+  /* layout */
+  .topbar{position:sticky;top:0;z-index:20;background:rgba(10,12,18,.92);
+    backdrop-filter:saturate(140%) blur(8px);border-bottom:1px solid var(--line);padding:12px 22px;
+    display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .topbar .brand{font-weight:800;letter-spacing:.2px;font-size:16px}
+  .topbar .brand small{color:var(--mute);font-weight:500;margin-left:8px;font-size:12px}
+  .topbar .status{margin-left:auto;display:flex;gap:14px;align-items:center;font-size:12px;color:var(--mute)}
+  .pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--good);
+    box-shadow:0 0 0 0 rgba(93,211,158,.6);animation:pulse 1.6s infinite}
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(93,211,158,.45)}
+    100%{box-shadow:0 0 0 12px rgba(93,211,158,0)}
+  }
+  .pulse.warn{background:var(--warn);box-shadow:0 0 0 0 rgba(255,180,84,.4);animation-name:pulseW}
+  @keyframes pulseW{
+    0%{box-shadow:0 0 0 0 rgba(255,180,84,.4)}
+    100%{box-shadow:0 0 0 12px rgba(255,180,84,0)}
+  }
+
+  main{max-width:1500px;margin:0 auto;padding:24px 22px 80px;
+    display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+  .span2{grid-column:span 2}
+  .span3{grid-column:span 3}
+  @media (max-width:1100px){main{grid-template-columns:1fr 1fr}.span3{grid-column:span 2}}
+  @media (max-width:760px){main{grid-template-columns:1fr}.span2,.span3{grid-column:span 1}}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;min-height:120px}
+  .card h3{margin:0 0 12px;font-size:13px;letter-spacing:.5px;color:var(--mute);text-transform:uppercase;font-weight:600;
+    display:flex;align-items:center;gap:8px}
+  .card h3 .count{font-size:11px;background:#1b2030;color:var(--accent);padding:1px 7px;border-radius:999px;letter-spacing:0;text-transform:none}
+
+  .stat{display:flex;flex-direction:column;gap:4px}
+  .stat .k{font-size:11px;color:var(--mute);letter-spacing:.6px;text-transform:uppercase}
+  .stat .v{font-size:24px;font-weight:800;font-family:var(--mono)}
+
+  .grid-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  @media (max-width:600px){.grid-stats{grid-template-columns:repeat(2,1fr)}}
+  .pill{display:inline-block;font-size:10px;letter-spacing:.6px;text-transform:uppercase;
+    padding:3px 8px;border-radius:999px;background:#1b2030;color:var(--accent);border:1px solid #283149}
+  .pill.good{background:#15301e;color:var(--good);border-color:#2f5d49}
+  .pill.warn{background:#2a2018;color:var(--warn);border-color:#5c4427}
+  .pill.bad{background:#2a1818;color:var(--bad);border-color:#5c2727}
+  .pill.gold{background:#2a2410;color:var(--gold);border-color:#5c4a18}
+
+  /* agents diagram */
+  .agents{padding:8px 4px}
+  .agents svg{display:block;width:100%;max-height:380px}
+  .a-box{fill:#161a23;stroke:#2c3346;stroke-width:1.2;rx:8}
+  .a-box.active{fill:#1a2238;stroke:#3b4f86}
+  .a-box.done{fill:#172821;stroke:#2f5d49}
+  .a-name{fill:#e7ecf3;font:600 12px ui-monospace,Menlo,monospace}
+  .a-role{fill:#8a93a6;font:11px ui-monospace,Menlo,monospace}
+  .a-link{stroke:#3a4358;stroke-width:1.2;fill:none}
+  .a-pulse{fill:none;stroke:#5dd39e;stroke-width:2;stroke-dasharray:4 4;
+    animation:dash 1.2s linear infinite}
+  @keyframes dash{to{stroke-dashoffset:-32}}
+
+  /* feed */
+  .feed{max-height:340px;overflow:auto;font-family:var(--mono);font-size:12px}
+  .feed .msg{padding:8px 10px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:flex-start}
+  .feed .msg:last-child{border-bottom:0}
+  .feed .ts{color:var(--dim);font-size:11px;flex-shrink:0;width:50px}
+  .feed .who{font-weight:700;flex-shrink:0;width:90px}
+  .feed .who.trainer{color:var(--accent)}
+  .feed .who.evaluator{color:var(--accent2)}
+  .feed .who.judge{color:var(--gold)}
+  .feed .who.meta_judge{color:#ff8fa3}
+  .feed .who.orchestrator{color:var(--good)}
+  .feed .who.human_judge{color:var(--warn)}
+  .feed .body{flex:1;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .feed .body.expand{white-space:pre-wrap}
+
+  /* loss chart */
+  .loss-svg{display:block;width:100%;height:200px}
+  .loss-grid{stroke:#1a1f2c;stroke-width:1}
+  .loss-axis{stroke:#222836;stroke-width:1}
+  .loss-line{fill:none;stroke:var(--gold);stroke-width:2}
+  .loss-line.dim{stroke:var(--dim);stroke-width:1;opacity:.55}
+  .loss-tick{fill:var(--mute);font:10px var(--mono)}
+
+  /* hyperband bracket */
+  .bracket{display:flex;gap:10px;align-items:flex-start;padding:6px 0;overflow-x:auto}
+  .bracket .col{flex:1;min-width:120px}
+  .bracket .col h4{margin:0 0 8px;font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.5px}
+  .bracket .cand{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:6px;
+    font-family:var(--mono);font-size:11px}
+  .bracket .cand.killed{opacity:.4;text-decoration:line-through}
+  .bracket .cand.win{border-color:var(--gold);background:#1a1610}
+  .bracket .cand .ppl{float:right;font-weight:700;color:var(--gold)}
+
+  /* traces */
+  .trace{padding:6px 8px;border-left:2px solid var(--accent);margin-bottom:4px;background:var(--panel2);border-radius:0 6px 6px 0;
+    font-family:var(--mono);font-size:11px;display:flex;justify-content:space-between;gap:10px}
+  .trace .span{color:var(--accent);font-weight:600}
+  .trace .dur{color:var(--mute)}
+
+  .empty{color:var(--mute);font-style:italic;text-align:center;padding:20px}
+
+  /* hierarchy legend */
+  .legend{display:flex;flex-wrap:wrap;gap:8px;font-size:11px;color:var(--mute);margin-top:10px}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:middle}
+
+  details summary{cursor:pointer;color:var(--mute);font-size:11px;margin-top:6px}
+  details[open] summary{color:var(--ink)}
+
+  pre{background:#0d1119;border:1px solid var(--line);border-radius:8px;padding:10px;
+    font:11.5px/1.5 var(--mono);color:#cfd8e6;overflow:auto;white-space:pre-wrap;max-height:140px}
+
+  .winner-card{background:linear-gradient(135deg,#1a1610,#11141b);border-color:#5c4a18}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">🧠 Self-Learning LLM <small>multi-agent · hyperband · braintrust</small></div>
+  <div class="status">
+    <span><span class="pulse" id="pulse"></span> <span id="phase">connecting…</span></span>
+    <span>round <b id="round">–</b></span>
+    <span>best ppl <b id="best-ppl" style="color:var(--gold)">–</b></span>
+    <span>prior n=<b id="prior-n">0</b></span>
+    <span><a href="/architecture.html">architecture deck →</a></span>
+  </div>
+</div>
+
+<main>
+
+  <!-- ── live stats ── -->
+  <div class="card span3">
+    <h3>live system</h3>
+    <div class="grid-stats">
+      <div class="stat"><span class="k">phase</span><span class="v" id="s-phase">init</span></div>
+      <div class="stat"><span class="k">current round</span><span class="v" id="s-round">–</span></div>
+      <div class="stat"><span class="k">best val ppl</span><span class="v" id="s-ppl" style="color:var(--gold)">–</span></div>
+      <div class="stat"><span class="k">prior support</span><span class="v" id="s-prior">0</span></div>
+      <div class="stat"><span class="k">candidates / round</span><span class="v" id="s-cand">–</span></div>
+      <div class="stat"><span class="k">halvings</span><span class="v" id="s-halv">–</span></div>
+      <div class="stat"><span class="k">human queue</span><span class="v" id="s-human">0</span></div>
+      <div class="stat"><span class="k">braintrust events</span><span class="v" id="s-bt">0</span></div>
+    </div>
+  </div>
+
+  <!-- ── agent hierarchy ── -->
+  <div class="card span2 agents">
+    <h3>multi-agent hierarchy <span class="count" id="agent-active">idle</span></h3>
+    <svg viewBox="0 0 900 360" preserveAspectRatio="xMidYMid meet">
+      <!-- orchestrator -->
+      <rect id="ag-orchestrator" class="a-box" x="350" y="20" width="200" height="50"/>
+      <text class="a-name" x="450" y="42" text-anchor="middle">OrchestratorAgent</text>
+      <text class="a-role" x="450" y="60" text-anchor="middle">opus · top-level loop</text>
+
+      <!-- links -->
+      <path class="a-link" d="M 450 70 L 160 130"/>
+      <path class="a-link" d="M 450 70 L 450 130"/>
+      <path class="a-link" d="M 450 70 L 740 130"/>
+
+      <!-- trainer -->
+      <rect id="ag-trainer" class="a-box" x="60" y="130" width="200" height="50"/>
+      <text class="a-name" x="160" y="152" text-anchor="middle">TrainerAgent</text>
+      <text class="a-role" x="160" y="170" text-anchor="middle">haiku · proposes config</text>
+
+      <!-- evaluator -->
+      <rect id="ag-evaluator" class="a-box" x="350" y="130" width="200" height="50"/>
+      <text class="a-name" x="450" y="152" text-anchor="middle">EvaluatorAgent</text>
+      <text class="a-role" x="450" y="170" text-anchor="middle">haiku · scores outputs</text>
+
+      <!-- human surface -->
+      <rect id="ag-human_judge" class="a-box" x="640" y="130" width="200" height="50"/>
+      <text class="a-name" x="740" y="152" text-anchor="middle">HumanJudgeAgent</text>
+      <text class="a-role" x="740" y="170" text-anchor="middle">surfaces decision queue</text>
+
+      <!-- judge -->
+      <path class="a-link" d="M 450 180 L 450 230"/>
+      <rect id="ag-judge" class="a-box" x="350" y="230" width="200" height="50"/>
+      <text class="a-name" x="450" y="252" text-anchor="middle">JudgeAgent</text>
+      <text class="a-role" x="450" y="270" text-anchor="middle">sonnet · audits evaluator</text>
+
+      <!-- meta-judge -->
+      <path class="a-link" d="M 450 280 L 450 320"/>
+      <rect id="ag-meta_judge" class="a-box" x="350" y="320" width="200" height="40"/>
+      <text class="a-name" x="450" y="338" text-anchor="middle">MetaJudgeAgent</text>
+      <text class="a-role" x="450" y="354" text-anchor="middle">opus · audits judge over time</text>
+
+      <!-- escalation arrow human ← meta -->
+      <path class="a-link" d="M 550 340 C 700 340, 740 240, 740 180" stroke-dasharray="3 3"/>
+      <text class="a-role" x="700" y="290">escalates on bias</text>
+    </svg>
+    <div class="legend">
+      <span><i style="background:#1a2238;border:1px solid #3b4f86"></i>active</span>
+      <span><i style="background:#172821;border:1px solid #2f5d49"></i>completed step</span>
+      <span><i style="background:#161a23;border:1px solid #2c3346"></i>idle</span>
+      <span>→ dashed = escalation path</span>
+    </div>
+  </div>
+
+  <!-- ── current winner ── -->
+  <div class="card winner-card">
+    <h3>current winner ★</h3>
+    <div id="winner-body">
+      <div class="empty">no rounds completed yet…</div>
+    </div>
+  </div>
+
+  <!-- ── loss curve ── -->
+  <div class="card span2">
+    <h3>loss curve <span class="count" id="loss-label">live</span></h3>
+    <svg class="loss-svg" id="loss-svg" viewBox="0 0 600 200" preserveAspectRatio="none">
+      <line class="loss-axis" x1="40" y1="10" x2="40" y2="180"/>
+      <line class="loss-axis" x1="40" y1="180" x2="595" y2="180"/>
+      <g id="loss-grid"></g>
+      <g id="loss-lines"></g>
+      <g id="loss-ticks"></g>
+    </svg>
+  </div>
+
+  <!-- ── hyperband bracket ── -->
+  <div class="card">
+    <h3>hyperband bracket</h3>
+    <div class="bracket" id="bracket">
+      <div class="empty">no candidates yet…</div>
+    </div>
+  </div>
+
+  <!-- ── agent feed ── -->
+  <div class="card span2">
+    <h3>agent message stream <span class="count" id="feed-count">0</span></h3>
+    <div class="feed" id="feed"><div class="empty">waiting for first event…</div></div>
+  </div>
+
+  <!-- ── judge verdicts ── -->
+  <div class="card">
+    <h3>latest judge verdict</h3>
+    <div id="verdict-body"><div class="empty">no verdicts yet</div></div>
+  </div>
+
+  <!-- ── braintrust traces ── -->
+  <div class="card span2">
+    <h3>braintrust traces <span class="count" id="trace-count">0</span></h3>
+    <div id="traces" style="max-height:280px;overflow:auto"><div class="empty">no traces yet</div></div>
+  </div>
+
+  <!-- ── human queue ── -->
+  <div class="card">
+    <h3>human-judge queue <span class="count" id="hq-count">0</span></h3>
+    <div id="human-queue"><div class="empty">no decisions awaiting human review ✓</div></div>
+  </div>
+
+  <!-- ── round history ── -->
+  <div class="card span3">
+    <h3>round history</h3>
+    <div id="rounds-table">
+      <div class="empty">no rounds yet</div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (n, d=2) => (n == null) ? "–" : Number(n).toFixed(d);
+const ago = (ts) => {
+  if (!ts) return "";
+  const s = Math.floor((Date.now()/1000) - ts);
+  if (s < 60) return s + "s";
+  if (s < 3600) return Math.floor(s/60) + "m";
+  return Math.floor(s/3600) + "h";
+};
+
+let lastSnapshot = {};
+
+async function fetchAll() {
+  try {
+    const [snap, traces, events, human] = await Promise.all([
+      fetch("/api/state").then(r => r.json()).catch(_ => ({})),
+      fetch("/api/traces").then(r => r.json()).catch(_ => []),
+      fetch("/api/events?n=200").then(r => r.json()).catch(_ => []),
+      fetch("/api/human").then(r => r.json()).catch(_ => []),
+    ]);
+    render(snap, traces, events, human);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function render(snap, traces, events, human) {
+  lastSnapshot = snap;
+  const cur = snap.current || {};
+  const phase = cur.phase || "idle";
+  $("phase").textContent = phase;
+  $("s-phase").textContent = phase;
+  $("s-round").textContent = cur.round ?? "–";
+  $("round").textContent = cur.round ?? "–";
+
+  const rounds = snap.rounds || [];
+  const bestPpl = rounds.length ? Math.min(...rounds.map(r => r.winner_ppl || Infinity)) : null;
+  $("s-ppl").textContent = bestPpl ? fmt(bestPpl, 1) : "–";
+  $("best-ppl").textContent = bestPpl ? fmt(bestPpl, 1) : "–";
+  $("s-prior").textContent = (snap.rounds && snap.rounds.length) ? snap.rounds[snap.rounds.length-1].prior_size ?? snap.prior_size ?? 0 : (snap.prior_size ?? 0);
+  $("prior-n").textContent = $("s-prior").textContent;
+  $("s-cand").textContent = snap.bracket?.n ?? "–";
+  $("s-halv").textContent = snap.bracket?.halvings ?? "–";
+  $("s-human").textContent = human.length;
+  $("s-bt").textContent = traces.length;
+
+  const pulse = $("pulse");
+  pulse.className = "pulse" + (phase === "complete" ? "" : (phase === "idle" ? " warn" : ""));
+
+  // ── agents: which is active right now
+  const allAgents = ["orchestrator","trainer","evaluator","judge","meta_judge","human_judge"];
+  allAgents.forEach(n => {
+    const el = document.getElementById("ag-" + n);
+    if (el) el.classList.remove("active","done");
+  });
+  let activeAgent = null;
+  if (phase === "proposing") activeAgent = "trainer";
+  else if (phase === "training") activeAgent = "trainer";
+  else if (phase === "evaluating") activeAgent = "evaluator";
+  if (activeAgent) document.getElementById("ag-" + activeAgent)?.classList.add("active");
+  if (rounds.length) {
+    document.getElementById("ag-orchestrator")?.classList.add("done");
+    document.getElementById("ag-judge")?.classList.add("done");
+    document.getElementById("ag-meta_judge")?.classList.add("done");
+  }
+  $("agent-active").textContent = activeAgent ? `${activeAgent} working` : (phase === "complete" ? "complete" : "idle");
+
+  // ── winner card
+  if (rounds.length) {
+    const last = rounds[rounds.length - 1];
+    const w = last.agent_step || {};
+    $("winner-body").innerHTML = `
+      <div class="grid-stats">
+        <div class="stat"><span class="k">val ppl</span><span class="v" style="color:var(--gold)">${fmt(last.winner_ppl,1)}</span></div>
+        <div class="stat"><span class="k">params (M)</span><span class="v">${fmt(last.winner_params_m,2)}</span></div>
+      </div>
+      <details style="margin-top:10px">
+        <summary>config + sample</summary>
+        <pre>${escape(JSON.stringify(w.proposal?.config || {}, null, 2))}</pre>
+        <pre>${escape((w.sample || "").slice(0, 400))}</pre>
+      </details>`;
+  }
+
+  // ── loss curve from latest agent_step's loss_curve (in metrics)
+  drawLossCurves(rounds);
+
+  // ── hyperband bracket — synthesize from candidates count + survivors
+  drawBracket(snap, rounds);
+
+  // ── agent feed from local events
+  drawFeed(events);
+
+  // ── latest verdict
+  if (rounds.length && rounds[rounds.length-1].agent_step) {
+    const v = rounds[rounds.length-1].agent_step.verdict || {};
+    const m = rounds[rounds.length-1].agent_step.meta || {};
+    $("verdict-body").innerHTML = `
+      <div style="margin-bottom:10px">
+        <span class="pill ${v.accept ? 'good' : 'bad'}">${v.accept ? 'accepted' : 'rejected'}</span>
+        <span class="pill">conf ${fmt(v.confidence, 2)}</span>
+      </div>
+      <div style="font-size:12px;color:var(--mute);margin-bottom:6px"><b style="color:var(--ink)">judge:</b> ${escape(v.reasoning || '')}</div>
+      <div style="font-size:12px;color:var(--mute)">
+        <b style="color:var(--ink)">meta-judge:</b>
+        ${m.bias_detected ? `<span class="pill warn">${escape(m.bias_detected)}</span>` : '<span class="pill good">no bias</span>'}
+        <div style="margin-top:4px">${escape(m.reasoning || '')}</div>
+      </div>`;
+  }
+
+  // ── braintrust traces
+  $("trace-count").textContent = traces.length;
+  if (traces.length === 0) {
+    $("traces").innerHTML = '<div class="empty">no braintrust traces (set BRAINTRUST_API_KEY to push live)</div>';
+  } else {
+    $("traces").innerHTML = traces.slice(-30).reverse().map(t => {
+      const span = t.span_attributes?.name || t.metadata?.span || t.span || (t.kind || "event");
+      const dur = t.metrics?.duration_ms || t.duration_ms || "";
+      const meta = JSON.stringify(t.metadata || t).slice(0, 80);
+      return `<div class="trace">
+        <span class="span">${escape(span)}</span>
+        <span style="flex:1;color:var(--mute);overflow:hidden;text-overflow:ellipsis">${escape(meta)}</span>
+        <span class="dur">${dur ? dur + 'ms' : ''}</span>
+      </div>`;
+    }).join("");
+  }
+
+  // ── human queue
+  $("hq-count").textContent = human.length;
+  if (human.length) {
+    $("human-queue").innerHTML = human.slice(-5).reverse().map(h => `
+      <div style="padding:8px;border-left:2px solid var(--warn);background:var(--panel2);border-radius:0 6px 6px 0;margin-bottom:6px">
+        <div style="font-size:12px"><b>${escape(h.reason)}</b></div>
+        <div style="font-size:11px;color:var(--mute);margin-top:2px">${ago(h.ts)} ago · ${h.status || 'pending'}</div>
+      </div>`).join("");
+  }
+
+  // ── round history
+  if (rounds.length) {
+    $("rounds-table").innerHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="color:var(--mute);text-transform:uppercase;font-size:10px;letter-spacing:.5px;border-bottom:1px solid var(--line)">
+          <th style="text-align:left;padding:6px">round</th>
+          <th style="text-align:right;padding:6px">candidates</th>
+          <th style="text-align:right;padding:6px">survivors</th>
+          <th style="text-align:right;padding:6px">winner ppl</th>
+          <th style="text-align:right;padding:6px">params M</th>
+          <th style="text-align:left;padding:6px">judge</th>
+          <th style="text-align:left;padding:6px">meta</th>
+        </tr></thead><tbody>
+        ${rounds.map(r => {
+          const v = r.agent_step?.verdict || {};
+          const m = r.agent_step?.meta || {};
+          return `<tr style="border-bottom:1px solid var(--line);font-family:var(--mono)">
+            <td style="padding:6px">#${r.round}</td>
+            <td style="padding:6px;text-align:right">${r.candidates}</td>
+            <td style="padding:6px;text-align:right">${r.survivors}</td>
+            <td style="padding:6px;text-align:right;color:var(--gold)">${fmt(r.winner_ppl,1)}</td>
+            <td style="padding:6px;text-align:right">${fmt(r.winner_params_m,2)}</td>
+            <td style="padding:6px"><span class="pill ${v.accept?'good':'bad'}">${v.accept?'accept':'reject'}</span></td>
+            <td style="padding:6px"><span class="pill ${m.bias_detected?'warn':'good'}">${m.bias_detected || 'clean'}</span></td>
+          </tr>`;
+        }).join("")}
+        </tbody>
+      </table>`;
+  }
+}
+
+function drawLossCurves(rounds) {
+  const lines = $("loss-lines");
+  const ticks = $("loss-ticks");
+  const grid = $("loss-grid");
+  lines.innerHTML = "";
+  ticks.innerHTML = "";
+  grid.innerHTML = "";
+
+  const curves = [];
+  rounds.forEach(r => {
+    const m = r.agent_step?.metrics;
+    if (m && Array.isArray(m.loss_curve) && m.loss_curve.length) curves.push(m.loss_curve);
+  });
+  if (!curves.length) {
+    $("loss-label").textContent = "no curves yet";
+    return;
+  }
+  $("loss-label").textContent = `${curves.length} curve${curves.length>1?'s':''}`;
+
+  // y range: [3, 11], x: [0, max length]
+  const maxLen = Math.max(...curves.map(c => c.length));
+  const yMin = 3, yMax = 11, yRange = yMax - yMin;
+  const px = (i) => 40 + (i / (maxLen - 1 || 1)) * 555;
+  const py = (v) => 10 + ((yMax - v) / yRange) * 170;
+
+  // grid
+  for (let y = 4; y <= 10; y += 2) {
+    grid.innerHTML += `<line class="loss-grid" x1="40" y1="${py(y)}" x2="595" y2="${py(y)}"/>`;
+    ticks.innerHTML += `<text class="loss-tick" x="35" y="${py(y)+3}" text-anchor="end">${y}</text>`;
+  }
+
+  curves.forEach((c, i) => {
+    const isLast = i === curves.length - 1;
+    const pts = c.map((v, j) => `${px(j)},${py(v)}`).join(" ");
+    lines.innerHTML += `<polyline class="loss-line ${isLast ? '' : 'dim'}" points="${pts}"/>`;
+  });
+}
+
+function drawBracket(snap, rounds) {
+  if (!rounds.length) return;
+  const last = rounds[rounds.length - 1];
+  const n = last.candidates;
+  const surv = last.survivors;
+  const halvings = snap.bracket?.halvings || 2;
+  let layers = [n];
+  let cur = n;
+  for (let i = 0; i < halvings; i++) {
+    cur = Math.max(1, Math.floor(cur / 2));
+    layers.push(cur);
+  }
+
+  const cols = layers.map((count, i) => {
+    let cands = "";
+    for (let k = 0; k < count; k++) {
+      const isWinner = (i === layers.length - 1) && (k === 0);
+      const ppl = isWinner ? fmt(last.winner_ppl, 1) : "—";
+      cands += `<div class="cand ${isWinner ? 'win' : ''}">cand-${k+1}<span class="ppl">${ppl}</span></div>`;
+    }
+    const stepBudget = (snap.bracket?.init_steps || 25) * Math.pow(2, i);
+    return `<div class="col"><h4>round ${i===0?'start':'halving '+i} · ${stepBudget}st</h4>${cands}</div>`;
+  }).join("");
+
+  $("bracket").innerHTML = cols;
+}
+
+function drawFeed(events) {
+  $("feed-count").textContent = events.length;
+  if (!events.length) return;
+  const recent = events.slice(-100).reverse();
+  $("feed").innerHTML = recent.map(e => {
+    const ts = e.ts ? new Date(e.ts * 1000).toLocaleTimeString().slice(0, 8) : "";
+    const who = e.agent || e.span || e.stage || e.kind || "system";
+    const body = e.response || e.user_msg || e.proposal?.name || JSON.stringify({...e, ts: undefined, agent: undefined, span: undefined, stage: undefined, kind: undefined}).slice(0, 200);
+    return `<div class="msg">
+      <span class="ts">${ts}</span>
+      <span class="who ${who}">${escape(who)}</span>
+      <span class="body">${escape(typeof body === 'string' ? body : JSON.stringify(body))}</span>
+    </div>`;
+  }).join("");
+}
+
+function escape(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+fetchAll();
+setInterval(fetchAll, 2000);
+</script>
+
+</body>
+</html>

@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LLM Training — Architecture & Results</title>
+<style>
+  :root{
+    --bg:#0b0d12; --panel:#11141b; --panel2:#161a23; --line:#222836;
+    --ink:#e7ecf3; --mute:#8a93a6; --accent:#7aa2ff; --accent2:#9d7bff;
+    --good:#5dd39e; --warn:#ffb454; --bad:#ff6b6b; --gold:#ffd166;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;}
+  a{color:var(--accent);text-decoration:none}
+  .nav{position:sticky;top:0;z-index:10;background:rgba(11,13,18,.85);
+    backdrop-filter:saturate(140%) blur(8px);border-bottom:1px solid var(--line)}
+  .nav-in{max-width:1200px;margin:0 auto;padding:10px 22px;display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+  .nav .brand{font-weight:700;letter-spacing:.2px;margin-right:auto}
+  .nav .brand small{color:var(--mute);font-weight:500;margin-left:8px}
+  .nav a{color:var(--mute);font-size:13px}
+  .nav a:hover{color:var(--ink)}
+  main{max-width:1200px;margin:0 auto;padding:36px 22px 80px}
+  section{margin:48px 0;scroll-margin-top:60px}
+  h1{font-size:42px;line-height:1.1;margin:0 0 8px;letter-spacing:-.5px}
+  h2{font-size:26px;margin:0 0 6px;letter-spacing:-.3px}
+  h3{font-size:17px;margin:0 0 8px;color:var(--ink)}
+  .sub{color:var(--mute);margin:0 0 28px;font-size:15px}
+  .pill{display:inline-block;font-size:11px;letter-spacing:.6px;text-transform:uppercase;
+    padding:3px 9px;border-radius:999px;background:#1b2030;color:var(--accent);border:1px solid #283149}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+  @media (max-width:880px){.g2,.g3,.g4{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .card.tight{padding:14px}
+  .stat{display:flex;flex-direction:column;gap:4px}
+  .stat .k{font-size:11px;color:var(--mute);letter-spacing:.6px;text-transform:uppercase}
+  .stat .v{font-size:22px;font-weight:700;font-family:var(--mono)}
+  .stat .v.small{font-size:16px}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:10px 10px;border-bottom:1px solid var(--line);text-align:left}
+  th{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+  td.num,th.num{text-align:right;font-family:var(--mono)}
+  tr.win{background:linear-gradient(90deg,rgba(255,209,102,.10),transparent 60%)}
+  tr.win td:first-child::before{content:"★ ";color:var(--gold)}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--mute);margin-top:8px}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle}
+  code,kbd{font-family:var(--mono);font-size:12px;background:#1a1f2c;border:1px solid var(--line);padding:1px 6px;border-radius:6px;color:#cfd8e6}
+  .mono{font-family:var(--mono)}
+  .hr{height:1px;background:var(--line);margin:18px 0}
+  /* svg helpers */
+  .box{fill:#161a23;stroke:#2c3346}
+  .box-accent{fill:#1a2238;stroke:#3b4f86}
+  .box-warn{fill:#2a2018;stroke:#5c4427}
+  .box-good{fill:#172821;stroke:#2f5d49}
+  .box-bad{fill:#2a1818;stroke:#5c2727}
+  .lbl{fill:#e7ecf3;font:13px ui-monospace,Menlo,monospace}
+  .lbl-sm{fill:#a8b0c2;font:11px ui-monospace,Menlo,monospace}
+  .lbl-mut{fill:#8a93a6;font:11px ui-monospace,Menlo,monospace}
+  .arrow{stroke:#5d6e96;stroke-width:1.5;fill:none;marker-end:url(#arr)}
+  .arrow-dim{stroke:#3a4358;stroke-width:1.2;fill:none;marker-end:url(#arr2);stroke-dasharray:4 4}
+  .swap{fill:#9d7bff}
+  /* completions */
+  .comp{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line)}
+  .comp:last-child{border-bottom:0}
+  .comp .p{flex:1;color:var(--mute);font-family:var(--mono);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .comp .ans{font-family:var(--mono);font-size:13px;font-weight:700}
+  .comp .pick{font-family:var(--mono);font-size:13px}
+  .badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;letter-spacing:.4px}
+  .b-ok{background:#15301e;color:var(--good);border:1px solid #2f5d49}
+  .b-no{background:#301818;color:var(--bad);border:1px solid #5c2727}
+  pre{background:#0d1119;border:1px solid var(--line);border-radius:10px;padding:14px;
+    font:12.5px/1.55 var(--mono);color:#cfd8e6;overflow:auto;white-space:pre-wrap}
+</style>
+</head>
+<body>
+
+<div class="nav"><div class="nav-in">
+  <span class="brand">LLM Training <small>architecture · sweep · benchmark</small></span>
+  <a href="#system">System</a>
+  <a href="#pipeline">Pipeline</a>
+  <a href="#model">Model</a>
+  <a href="#sweep">Sweep</a>
+  <a href="#results">Results</a>
+  <a href="#winner">Winner</a>
+  <a href="#bench">Benchmark</a>
+  <a href="#sample">Sample</a>
+</div></div>
+
+<main>
+
+<section>
+  <span class="pill">Project · llm_training</span>
+  <h1 style="margin-top:10px">A modular LLaMA-style decoder, swept across 11 variants.</h1>
+  <p class="sub">Pre-norm transformer with toggleable RMSNorm/LayerNorm, MHA/GQA/MQA, SwiGLU/GELU, RoPE/learned positions, tied embeddings. Trained 200 steps × 11 configs on Apple MPS, then benchmarked on Tiny Shakespeare.</p>
+
+  <div class="grid g4">
+    <div class="card stat"><span class="k">Variants swept</span><span class="v">11</span></div>
+    <div class="card stat"><span class="k">Winner val PPL</span><span class="v" style="color:var(--gold)">158.1</span></div>
+    <div class="card stat"><span class="k">Winner params</span><span class="v">11.28M</span></div>
+    <div class="card stat"><span class="k">Device</span><span class="v small">Apple MPS</span></div>
+  </div>
+</section>
+
+<!-- ============ SYSTEM (externals) ============ -->
+<section id="system">
+  <span class="pill">External · how this session is wired</span>
+  <h2 style="margin-top:8px">System: phone ⇄ Mac ⇄ training pipeline</h2>
+  <p class="sub">You're talking to Claude on your phone via Remote Control. The Mac stays awake via <code>caffeinate</code> while the training pipeline runs locally and serves results on port 8000.</p>
+
+  <div class="card" style="padding:18px">
+  <svg viewBox="0 0 1100 360" width="100%" style="display:block">
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#5d6e96"/>
+      </marker>
+      <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#3a4358"/>
+      </marker>
+    </defs>
+
+    <!-- phone -->
+    <rect x="20" y="120" width="160" height="120" rx="16" class="box-accent"/>
+    <text x="100" y="150" text-anchor="middle" class="lbl" font-weight="700">📱 Phone</text>
+    <text x="100" y="172" text-anchor="middle" class="lbl-sm">claude.ai/code</text>
+    <text x="100" y="190" text-anchor="middle" class="lbl-sm">remote control</text>
+    <text x="100" y="220" text-anchor="middle" class="lbl-mut">(this session)</text>
+
+    <!-- cloud relay -->
+    <rect x="240" y="40" width="200" height="80" rx="14" class="box"/>
+    <text x="340" y="68" text-anchor="middle" class="lbl" font-weight="700">☁ Anthropic relay</text>
+    <text x="340" y="88" text-anchor="middle" class="lbl-sm">remote control bridge</text>
+    <text x="340" y="106" text-anchor="middle" class="lbl-mut">/remote-control</text>
+
+    <!-- mac -->
+    <rect x="240" y="160" width="540" height="180" rx="16" class="box"/>
+    <text x="260" y="184" class="lbl" font-weight="700">💻 MacBook · /Users/fullfocus</text>
+    <text x="260" y="202" class="lbl-mut">battery 33% · no charger · MPS GPU</text>
+
+    <!-- claude code process -->
+    <rect x="260" y="220" width="220" height="100" rx="10" class="box-accent"/>
+    <text x="370" y="244" text-anchor="middle" class="lbl" font-weight="700">Claude Code (CLI)</text>
+    <text x="370" y="264" text-anchor="middle" class="lbl-sm">opus-4-7 · 1M ctx</text>
+    <text x="370" y="284" text-anchor="middle" class="lbl-sm">runs Bash / Edit / Read</text>
+    <text x="370" y="304" text-anchor="middle" class="lbl-mut">orchestrates pipeline</text>
+
+    <!-- caffeinate -->
+    <rect x="500" y="220" width="120" height="46" rx="8" class="box-warn"/>
+    <text x="560" y="240" text-anchor="middle" class="lbl" font-weight="700">caffeinate -dis</text>
+    <text x="560" y="256" text-anchor="middle" class="lbl-mut">PID 10876</text>
+
+    <!-- pipeline -->
+    <rect x="500" y="278" width="260" height="46" rx="8" class="box-good"/>
+    <text x="630" y="298" text-anchor="middle" class="lbl" font-weight="700">run.sh pipeline (killed)</text>
+    <text x="630" y="314" text-anchor="middle" class="lbl-mut">experiments → benchmark → server :8000</text>
+
+    <!-- arrows -->
+    <path d="M180,170 C220,170 220,80 240,80" class="arrow"/>
+    <path d="M340,120 L340,160" class="arrow"/>
+    <path d="M180,200 C220,200 220,260 260,260" class="arrow"/>
+
+    <!-- explanatory side: results -->
+    <rect x="820" y="120" width="260" height="200" rx="14" class="box"/>
+    <text x="950" y="148" text-anchor="middle" class="lbl" font-weight="700">📦 artifacts on disk</text>
+    <text x="840" y="178" class="lbl-sm">experiments.json</text><text x="1060" y="178" text-anchor="end" class="lbl-mut">19 KB · 11 variants</text>
+    <text x="840" y="200" class="lbl-sm">bench.json</text><text x="1060" y="200" text-anchor="end" class="lbl-mut">2 KB · winner eval</text>
+    <text x="840" y="222" class="lbl-sm">ckpt.pt</text><text x="1060" y="222" text-anchor="end" class="lbl-mut">148 MB · trained weights</text>
+    <text x="840" y="244" class="lbl-sm">run.log.jsonl</text><text x="1060" y="244" text-anchor="end" class="lbl-mut">36 KB</text>
+    <text x="840" y="266" class="lbl-sm">index.html</text><text x="1060" y="266" text-anchor="end" class="lbl-mut">existing dashboard</text>
+    <text x="840" y="290" class="lbl-sm" style="fill:var(--gold)">architecture.html</text><text x="1060" y="290" text-anchor="end" class="lbl-mut" style="fill:var(--gold)">← this page</text>
+
+    <!-- pipeline -> artifacts -->
+    <path d="M760,300 C800,300 800,200 820,200" class="arrow-dim"/>
+  </svg>
+  </div>
+</section>
+
+<!-- ============ PIPELINE ============ -->
+<section id="pipeline">
+  <span class="pill">Internal · run.sh stages</span>
+  <h2 style="margin-top:8px">Pipeline: install → sweep → benchmark → serve</h2>
+  <p class="sub">Single-command training pipeline. Each stage writes JSON the next stage reads.</p>
+
+  <div class="card">
+  <svg viewBox="0 0 1080 240" width="100%" style="display:block">
+    <!-- 4 stages -->
+    <g>
+      <rect x="20" y="40" width="220" height="120" rx="12" class="box"/>
+      <text x="130" y="70" text-anchor="middle" class="lbl" font-weight="700">① install</text>
+      <text x="130" y="92" text-anchor="middle" class="lbl-sm">pip install -r</text>
+      <text x="130" y="110" text-anchor="middle" class="lbl-sm">requirements.txt</text>
+      <text x="130" y="138" text-anchor="middle" class="lbl-mut">torch · numpy · tiktoken · flask</text>
+    </g>
+    <g>
+      <rect x="280" y="40" width="220" height="120" rx="12" class="box-accent"/>
+      <text x="390" y="70" text-anchor="middle" class="lbl" font-weight="700">② experiments.py</text>
+      <text x="390" y="92" text-anchor="middle" class="lbl-sm">11 variants × 200 steps</text>
+      <text x="390" y="110" text-anchor="middle" class="lbl-sm">→ experiments.json</text>
+      <text x="390" y="138" text-anchor="middle" class="lbl-mut">picks lowest val loss</text>
+    </g>
+    <g>
+      <rect x="540" y="40" width="220" height="120" rx="12" class="box-good"/>
+      <text x="650" y="70" text-anchor="middle" class="lbl" font-weight="700">③ benchmark.py</text>
+      <text x="650" y="92" text-anchor="middle" class="lbl-sm">winner only · full eval</text>
+      <text x="650" y="110" text-anchor="middle" class="lbl-sm">→ bench.json + ckpt.pt</text>
+      <text x="650" y="138" text-anchor="middle" class="lbl-mut">ppl · accuracy · throughput</text>
+    </g>
+    <g>
+      <rect x="800" y="40" width="220" height="120" rx="12" class="box-warn"/>
+      <text x="910" y="70" text-anchor="middle" class="lbl" font-weight="700">④ server.py</text>
+      <text x="910" y="92" text-anchor="middle" class="lbl-sm">Flask · localhost:8000</text>
+      <text x="910" y="110" text-anchor="middle" class="lbl-sm">serves index.html</text>
+      <text x="910" y="138" text-anchor="middle" class="lbl-mut">live dashboard</text>
+    </g>
+    <!-- arrows -->
+    <path d="M240,100 L280,100" class="arrow"/>
+    <path d="M500,100 L540,100" class="arrow"/>
+    <path d="M760,100 L800,100" class="arrow"/>
+    <text x="540" y="200" text-anchor="middle" class="lbl-mut">data flows left → right · each stage durable on disk · resumable</text>
+  </svg>
+  </div>
+</section>
+
+<!-- ============ MODEL (internals) ============ -->
+<section id="model">
+  <span class="pill">Internal · model.py</span>
+  <h2 style="margin-top:8px">Model: pre-norm decoder block with swappable components</h2>
+  <p class="sub">Each layer is a <code>BlockSpec</code> — norm / attention / FFN / residual style can vary per layer. Defaults are LLaMA-style.</p>
+
+  <div class="card">
+  <svg viewBox="0 0 1100 480" width="100%" style="display:block">
+    <!-- input -->
+    <rect x="40" y="30" width="260" height="50" rx="10" class="box"/>
+    <text x="170" y="60" text-anchor="middle" class="lbl">tokens (B, T)</text>
+
+    <!-- tok emb -->
+    <rect x="40" y="100" width="260" height="50" rx="10" class="box-accent"/>
+    <text x="170" y="124" text-anchor="middle" class="lbl">tok_emb · vocab→d_model</text>
+    <text x="170" y="142" text-anchor="middle" class="lbl-mut">tied with lm_head ↓</text>
+
+    <!-- pos -->
+    <rect x="40" y="170" width="260" height="40" rx="10" class="box"/>
+    <text x="170" y="195" text-anchor="middle" class="lbl-sm">+ learned pos_emb (if pos_type=learned)</text>
+
+    <!-- block stack -->
+    <rect x="40" y="230" width="260" height="160" rx="10" class="box-accent" stroke-dasharray="4 4"/>
+    <text x="170" y="254" text-anchor="middle" class="lbl" font-weight="700">N × Block</text>
+    <text x="170" y="276" text-anchor="middle" class="lbl-sm">x = x + Attn(Norm(x), RoPE)</text>
+    <text x="170" y="294" text-anchor="middle" class="lbl-sm">x = x + FFN(Norm(x))</text>
+    <text x="170" y="322" text-anchor="middle" class="lbl-mut">pre-norm residual (default)</text>
+    <text x="170" y="346" text-anchor="middle" class="lbl-mut">or post-norm: Norm(x + sublayer(x))</text>
+    <text x="170" y="370" text-anchor="middle" class="lbl-mut">N = n_layers (4–10 in sweep)</text>
+
+    <!-- final norm -->
+    <rect x="40" y="408" width="260" height="32" rx="8" class="box"/>
+    <text x="170" y="429" text-anchor="middle" class="lbl-sm">final RMSNorm</text>
+
+    <!-- arrows down -->
+    <path d="M170,80 L170,100" class="arrow"/>
+    <path d="M170,150 L170,170" class="arrow"/>
+    <path d="M170,210 L170,230" class="arrow"/>
+    <path d="M170,390 L170,408" class="arrow"/>
+
+    <!-- swap panels right -->
+    <text x="380" y="58" class="lbl" font-weight="700" fill="#9d7bff">Swappable per layer</text>
+
+    <rect x="380" y="80" width="320" height="76" rx="10" class="box"/>
+    <text x="395" y="102" class="lbl">Norm</text>
+    <text x="395" y="124" class="lbl-sm">RMSNorm  (LLaMA, default)</text>
+    <text x="395" y="142" class="lbl-mut">LayerNorm  (GPT-2 style)</text>
+
+    <rect x="380" y="166" width="320" height="100" rx="10" class="box"/>
+    <text x="395" y="188" class="lbl">Attention</text>
+    <text x="395" y="210" class="lbl-sm">MHA  · n_kv = n_heads</text>
+    <text x="395" y="228" class="lbl-sm">GQA  · n_kv &lt; n_heads (default, n_kv=2)</text>
+    <text x="395" y="246" class="lbl-sm">MQA  · n_kv = 1</text>
+
+    <rect x="380" y="276" width="320" height="76" rx="10" class="box"/>
+    <text x="395" y="298" class="lbl">FFN</text>
+    <text x="395" y="320" class="lbl-sm">SwiGLU  hidden = round64(8/3 · d)</text>
+    <text x="395" y="338" class="lbl-mut">GELU-MLP  hidden = round64(4 · d)</text>
+
+    <rect x="380" y="362" width="320" height="58" rx="10" class="box"/>
+    <text x="395" y="384" class="lbl">Positional</text>
+    <text x="395" y="404" class="lbl-sm">RoPE (default) · or learned embeddings</text>
+
+    <!-- right column: lm head + loss -->
+    <rect x="740" y="100" width="320" height="60" rx="10" class="box-good"/>
+    <text x="900" y="124" text-anchor="middle" class="lbl">lm_head · d_model → vocab</text>
+    <text x="900" y="146" text-anchor="middle" class="lbl-mut">tie_embeddings=True ↺ tok_emb</text>
+
+    <rect x="740" y="180" width="320" height="60" rx="10" class="box"/>
+    <text x="900" y="204" text-anchor="middle" class="lbl">cross-entropy loss</text>
+    <text x="900" y="224" text-anchor="middle" class="lbl-mut">ignore_index = -100</text>
+
+    <rect x="740" y="260" width="320" height="100" rx="10" class="box-warn"/>
+    <text x="900" y="284" text-anchor="middle" class="lbl">generate()</text>
+    <text x="900" y="306" text-anchor="middle" class="lbl-sm">temperature · top-k · EOS</text>
+    <text x="900" y="324" text-anchor="middle" class="lbl-sm">F.scaled_dot_product_attention</text>
+    <text x="900" y="342" text-anchor="middle" class="lbl-mut">causal · MPS-accelerated</text>
+
+    <!-- bridging arrows -->
+    <path d="M300,310 L380,200" class="arrow-dim"/>
+    <path d="M300,310 L740,130" class="arrow"/>
+  </svg>
+  </div>
+</section>
+
+<!-- ============ SWEEP CONFIG ============ -->
+<section id="sweep">
+  <span class="pill">Sweep configuration</span>
+  <h2 style="margin-top:8px">11 variants · 200 steps each · block_size 128</h2>
+  <p class="sub">Apples-to-apples comparison: same dataset, same step count, same optimizer. Only the model config (and lr) varies.</p>
+
+  <div class="grid g3">
+    <div class="card stat"><span class="k">Steps per variant</span><span class="v">200</span></div>
+    <div class="card stat"><span class="k">Block size</span><span class="v">128 tok</span></div>
+    <div class="card stat"><span class="k">Tokens seen / variant</span><span class="v">≈1.23M</span></div>
+  </div>
+</section>
+
+<!-- ============ RESULTS TABLE ============ -->
+<section id="results">
+  <span class="pill">Results · sorted by val perplexity (lower = better)</span>
+  <h2 style="margin-top:8px">Sweep results — winner: <span style="color:var(--gold)">shallow-wide (4L × 512d)</span></h2>
+  <p class="sub">Width beat depth at this scale. GQA matched full MHA at lower cost. Tied embeddings &gt; untied. Long context hurt at fixed step count (less effective gradient updates).</p>
+
+  <div class="card tight">
+  <table>
+    <thead><tr>
+      <th>variant</th>
+      <th class="num">params (M)</th>
+      <th class="num">val PPL ↓</th>
+      <th class="num">val loss</th>
+      <th class="num">tok/s</th>
+      <th class="num">elapsed (s)</th>
+    </tr></thead>
+    <tbody>
+      <tr class="win"><td>shallow-wide (4L × 512d)</td><td class="num">11.28</td><td class="num">158.12</td><td class="num">5.063</td><td class="num">5,346</td><td class="num">229.8</td></tr>
+      <tr><td>no-GQA (full MHA)</td><td class="num">10.62</td><td class="num">168.64</td><td class="num">5.128</td><td class="num">7,658</td><td class="num">160.5</td></tr>
+      <tr><td>combo: untied + high-LR</td><td class="num">48.08</td><td class="num">174.84</td><td class="num">5.164</td><td class="num">5,445</td><td class="num">225.7</td></tr>
+      <tr><td>high-LR (6e-4)</td><td class="num">9.44</td><td class="num">177.09</td><td class="num">5.177</td><td class="num">5,376</td><td class="num">228.6</td></tr>
+      <tr><td>tiny (256d × 4L)</td><td class="num">2.95</td><td class="num">196.79</td><td class="num">5.282</td><td class="num">7,571</td><td class="num">162.3</td></tr>
+      <tr><td>untied embeddings</td><td class="num">48.08</td><td class="num">219.00</td><td class="num">5.389</td><td class="num">5,239</td><td class="num">234.6</td></tr>
+      <tr><td>long-context (seq=256)</td><td class="num">9.44</td><td class="num">221.23</td><td class="num">5.399</td><td class="num">5,288</td><td class="num">232.4</td></tr>
+      <tr><td>deep-narrow (10L × 320d)</td><td class="num">11.07</td><td class="num">232.37</td><td class="num">5.448</td><td class="num">4,812</td><td class="num">255.4</td></tr>
+      <tr><td>baseline</td><td class="num">9.44</td><td class="num">288.19</td><td class="num">5.664</td><td class="num">9,346</td><td class="num">131.5</td></tr>
+      <tr><td>my config</td><td class="num">2.94</td><td class="num">473.65</td><td class="num">6.158</td><td class="num">6,362</td><td class="num">436.4</td></tr>
+      <tr><td>smoke-test</td><td class="num">0.39</td><td class="num">14,323.83</td><td class="num">9.547</td><td class="num">859</td><td class="num">430.6</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card">
+      <h3>Width &gt; depth (at this scale)</h3>
+      <p style="color:var(--mute);margin:0;font-size:13px">Shallow-wide (4L × 512d) beat deep-narrow (10L × 320d) by ~74 PPL points despite similar parameter counts (11.3M vs 11.1M).</p>
+    </div>
+    <div class="card">
+      <h3>GQA ≈ MHA, faster</h3>
+      <p style="color:var(--mute);margin:0;font-size:13px">Full MHA gave only ~10 PPL improvement over GQA at <em>this step count</em>, but GQA's tok/s in baseline (9,346) is 22% faster than MHA (7,658).</p>
+    </div>
+    <div class="card">
+      <h3>Untied = wasted params</h3>
+      <p style="color:var(--mute);margin:0;font-size:13px">Untied embeddings 5× the param count (48M vs 9.4M) but did <em>worse</em> than tied baseline-class runs at 200 steps — undertrained.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LOSS CURVES ============ -->
+<section>
+  <span class="pill">Training dynamics</span>
+  <h2 style="margin-top:8px">Loss curves · all 11 variants</h2>
+  <p class="sub">200 steps each. Smoke-test diverges off-chart; the rest cluster between loss 4 and 5.5 by step 200.</p>
+
+  <div class="card">
+    <svg viewBox="0 0 1100 420" width="100%" style="display:block">
+      <!-- grid + axes -->
+      <g stroke="#222836" stroke-width="1">
+        <line x1="60" y1="20" x2="60" y2="370"/>
+        <line x1="60" y1="370" x2="1080" y2="370"/>
+      </g>
+      <!-- y ticks (loss 3..11) -->
+      <g class="lbl-mut" font-size="10">
+        <!-- y range 3 (top) to 11 (bottom). px: y = 20 + (val-3)/8 * 350 -->
+        <text x="55" y="24" text-anchor="end">11</text>
+        <text x="55" y="68" text-anchor="end">10</text>
+        <text x="55" y="111" text-anchor="end">9</text>
+        <text x="55" y="155" text-anchor="end">8</text>
+        <text x="55" y="199" text-anchor="end">7</text>
+        <text x="55" y="243" text-anchor="end">6</text>
+        <text x="55" y="286" text-anchor="end">5</text>
+        <text x="55" y="330" text-anchor="end">4</text>
+        <text x="55" y="374" text-anchor="end">3</text>
+      </g>
+      <g stroke="#1a1f2c" stroke-width="1">
+        <line x1="60" y1="68" x2="1080" y2="68"/>
+        <line x1="60" y1="155" x2="1080" y2="155"/>
+        <line x1="60" y1="243" x2="1080" y2="243"/>
+        <line x1="60" y1="330" x2="1080" y2="330"/>
+      </g>
+      <!-- x ticks (40 sample points -> step ~ idx*5) -->
+      <g class="lbl-mut" font-size="10" text-anchor="middle">
+        <text x="60" y="388">0</text>
+        <text x="315" y="388">50</text>
+        <text x="570" y="388">100</text>
+        <text x="825" y="388">150</text>
+        <text x="1080" y="388">200</text>
+      </g>
+      <text x="570" y="408" text-anchor="middle" class="lbl-mut">step</text>
+      <text x="20" y="195" transform="rotate(-90 20 195)" text-anchor="middle" class="lbl-mut">loss</text>
+
+      <!-- Polylines. yScale: y(v) = 20 + (11 - v) / 8 * 350 -->
+      <!-- shallow-wide WINNER -->
+      <polyline fill="none" stroke="#ffd166" stroke-width="2.5"
+        points="60,86 86,179 111,158 137,236 163,257 188,279 214,310 240,326 265,319 291,294 316,319 342,331 368,335 393,340 419,335 444,343 470,353 496,290 521,351 547,351 572,353 598,351 624,359 649,357 675,361 700,368 726,368 752,373 777,371 803,375 828,373 854,376 880,302 905,392 931,323 956,377 982,377 1007,373 1033,383 1059,384"/>
+
+      <!-- no-GQA -->
+      <polyline fill="none" stroke="#7aa2ff" stroke-width="1.5" opacity="0.85"
+        points="60,87 86,111 111,180 137,156 163,212 188,237 214,245 240,286 265,299 291,308 316,316 342,322 368,328 393,329 419,331 444,335 470,338 496,340 521,341 547,342 572,344 598,343 624,344 649,346 675,348 700,348 726,348 752,348 777,349 803,350 828,350 854,350 880,351 905,352 931,353 956,353 982,353 1007,354 1033,354 1059,354"/>
+
+      <!-- baseline -->
+      <polyline fill="none" stroke="#5dd39e" stroke-width="1.5" opacity="0.85"
+        points="60,88 86,112 111,134 137,158 163,182 188,205 214,222 240,238 265,251 291,263 316,275 342,283 368,289 393,294 419,299 444,303 470,306 496,308 521,310 547,312 572,313 598,314 624,315 649,316 675,317 700,318 726,318 752,319 777,319 803,320 828,320 854,320 880,321 905,321 931,321 956,322 982,322 1007,322 1033,323 1059,323"/>
+
+      <!-- deep-narrow -->
+      <polyline fill="none" stroke="#9d7bff" stroke-width="1.5" opacity="0.7"
+        points="60,90 86,118 111,141 137,165 163,188 188,206 214,221 240,234 265,247 291,259 316,268 342,275 368,281 393,287 419,291 444,294 470,297 496,300 521,303 547,305 572,307 598,308 624,310 649,311 675,312 700,313 726,314 752,315 777,315 803,316 828,316 854,317 880,317 905,318 931,318 956,318 982,319 1007,319 1033,319 1059,320"/>
+
+      <!-- tiny -->
+      <polyline fill="none" stroke="#ffb454" stroke-width="1.5" opacity="0.7"
+        points="60,93 86,124 111,148 137,170 163,191 188,209 214,224 240,238 265,250 291,262 316,272 342,279 368,286 393,292 419,297 444,301 470,304 496,307 521,310 547,313 572,315 598,317 624,318 649,319 675,320 700,321 726,322 752,322 777,323 803,323 828,324 854,324 880,324 905,324 931,325 956,325 982,325 1007,325 1033,326 1059,326"/>
+
+      <!-- high-LR -->
+      <polyline fill="none" stroke="#ff6b6b" stroke-width="1.5" opacity="0.7"
+        points="60,90 86,140 111,165 137,210 163,232 188,252 214,265 240,284 265,295 291,304 316,314 342,322 368,328 393,334 419,338 444,342 470,346 496,348 521,349 547,350 572,351 598,351 624,352 649,352 675,353 700,353 726,353 752,353 777,353 803,354 828,354 854,354 880,354 905,354 931,354 956,354 982,354 1007,354 1033,355 1059,355"/>
+
+      <!-- smoke-test (terrible, off-chart line that stays high) -->
+      <polyline fill="none" stroke="#666" stroke-width="1.2" opacity="0.5" stroke-dasharray="3 3"
+        points="60,30 1059,40"/>
+    </svg>
+    <div class="legend">
+      <span><i style="background:#ffd166"></i>shallow-wide (winner)</span>
+      <span><i style="background:#7aa2ff"></i>no-GQA / full MHA</span>
+      <span><i style="background:#5dd39e"></i>baseline (GQA)</span>
+      <span><i style="background:#9d7bff"></i>deep-narrow</span>
+      <span><i style="background:#ffb454"></i>tiny</span>
+      <span><i style="background:#ff6b6b"></i>high-LR</span>
+      <span><i style="background:#666"></i>smoke-test (off-chart)</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WINNER ============ -->
+<section id="winner">
+  <span class="pill" style="background:#2a2410;color:var(--gold);border-color:#5c4a18">★ Winner</span>
+  <h2 style="margin-top:8px">shallow-wide · 4 layers × 512 d_model</h2>
+  <p class="sub">Wider model with fewer layers learned faster per token at this budget. GQA (8 heads, 2 KV) kept inference cheap.</p>
+
+  <div class="grid g4">
+    <div class="card stat"><span class="k">params</span><span class="v">11.28M</span></div>
+    <div class="card stat"><span class="k">val ppl</span><span class="v" style="color:var(--gold)">158.12</span></div>
+    <div class="card stat"><span class="k">val loss</span><span class="v">5.063</span></div>
+    <div class="card stat"><span class="k">throughput</span><span class="v">5,346 tok/s</span></div>
+    <div class="card stat"><span class="k">d_model</span><span class="v">512</span></div>
+    <div class="card stat"><span class="k">layers</span><span class="v">4</span></div>
+    <div class="card stat"><span class="k">heads / KV</span><span class="v">8 / 2</span></div>
+    <div class="card stat"><span class="k">d_ff_mult</span><span class="v">2.67 (8/3)</span></div>
+  </div>
+</section>
+
+<!-- ============ BENCHMARK ============ -->
+<section id="bench">
+  <span class="pill">Benchmark · winner only</span>
+  <h2 style="margin-top:8px">Held-out evaluation on Tiny Shakespeare</h2>
+  <p class="sub">Note: bench was run against an earlier checkpoint (params_m=9.44M, not the 11.28M winner). Treat as a sanity check, not a final number.</p>
+
+  <div class="grid g4">
+    <div class="card stat"><span class="k">device</span><span class="v small">MPS</span></div>
+    <div class="card stat"><span class="k">weights</span><span class="v">115 MB</span></div>
+    <div class="card stat"><span class="k">val ppl</span><span class="v" style="color:var(--warn)">805.5</span></div>
+    <div class="card stat"><span class="k">completion acc</span><span class="v">2 / 5 = 40%</span></div>
+    <div class="card stat"><span class="k">forward tok/s</span><span class="v">44,618</span></div>
+    <div class="card stat"><span class="k">batch / seq</span><span class="v">4 / 256</span></div>
+    <div class="card stat"><span class="k">val loss</span><span class="v">6.691</span></div>
+    <div class="card stat"><span class="k">eval prompts</span><span class="v">5</span></div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <h3>Cloze completion eval (5 Shakespeare lines)</h3>
+    <div class="comp"><div class="p">"To be, or not to be, that is the ___"</div>
+      <div class="ans" style="color:var(--good)">question</div><div class="pick" style="color:var(--bad)">→ answer</div><span class="badge b-no">miss</span></div>
+    <div class="comp"><div class="p">"All the world's a ___"</div>
+      <div class="ans" style="color:var(--good)">stage</div><div class="pick" style="color:var(--bad)">→ stone</div><span class="badge b-no">miss</span></div>
+    <div class="comp"><div class="p">"Romeo, Romeo, wherefore art thou ___"</div>
+      <div class="ans" style="color:var(--good)">Romeo</div><div class="pick" style="color:var(--good)">→ Romeo</div><span class="badge b-ok">hit</span></div>
+    <div class="comp"><div class="p">"What light through yonder window ___"</div>
+      <div class="ans" style="color:var(--good)">breaks</div><div class="pick" style="color:var(--bad)">→ shines</div><span class="badge b-no">miss</span></div>
+    <div class="comp"><div class="p">"Friends, Romans, countrymen, lend me your ___"</div>
+      <div class="ans" style="color:var(--good)">ears</div><div class="pick" style="color:var(--good)">→ ears</div><span class="badge b-ok">hit</span></div>
+  </div>
+</section>
+
+<!-- ============ SAMPLE ============ -->
+<section id="sample">
+  <span class="pill">Generation · prompt = "ROMEO:\\n"</span>
+  <h2 style="margin-top:8px">Sample output from the winner</h2>
+  <p class="sub">temperature 0.8 · top-k 50 · learned style (capitalized speakers, line-break dialogue) but semantics are still nonsense — expected at 200 steps.</p>
+
+<pre>ROMEO:
+O, I am Romeo, and even now 'tis no place of
+thyself for thine.
+
+JULIET:
+Good brother, I will.
+
+MARIANA:
+Give me this hour.
+
+DUKE VINCENTIO:
+What noise?'s this well; with him to be? Tell her,
+So he did look on him</pre>
+</section>
+
+<!-- ============ TAKEAWAYS ============ -->
+<section>
+  <span class="pill">Takeaways</span>
+  <h2 style="margin-top:8px">What the sweep tells us</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>1 · Width &gt; depth at small scale + short training</h3>
+      <p style="color:var(--mute);font-size:14px;margin:0">When you only get 200 steps, wider matrices push more useful signal per token than another residual stream. This flips at larger compute budgets — but holds here.</p>
+    </div>
+    <div class="card">
+      <h3>2 · GQA is a free lunch</h3>
+      <p style="color:var(--mute);font-size:14px;margin:0">GQA (n_kv=2) lost ~10 PPL vs full MHA but ran 22% faster on baseline. At the point KV cache memory dominates, GQA wins outright.</p>
+    </div>
+    <div class="card">
+      <h3>3 · Don't untie embeddings without compute</h3>
+      <p style="color:var(--mute);font-size:14px;margin:0">Untied embeddings 5× param count (48M) but val PPL got <em>worse</em> at fixed steps. The lm_head needs lots of gradient updates to be useful — tied head reuses tok_emb's training signal.</p>
+    </div>
+    <div class="card">
+      <h3>4 · Long context costs you at fixed step budget</h3>
+      <p style="color:var(--mute);font-size:14px;margin:0">Doubling context (128 → 256) at the same step count hurt loss — fewer effective gradient updates per token. Pay for context only if you can also pay for steps.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="card" style="background:linear-gradient(135deg,#161a23,#0d1119);border-color:#2c3346">
+    <div class="row" style="justify-content:space-between">
+      <div>
+        <h3 style="margin-bottom:4px">Run it locally</h3>
+        <div class="mono" style="color:var(--mute);font-size:13px">cd /Users/fullfocus/llm_training &amp;&amp; bash run.sh</div>
+      </div>
+      <div>
+        <h3 style="margin-bottom:4px">Open this page</h3>
+        <div class="mono" style="color:var(--mute);font-size:13px">open architecture.html</div>
+      </div>
+    </div>
+  </div>
+  <p class="sub" style="text-align:center;margin-top:30px;font-size:12px">
+    generated by Claude Code · battery 33% · MacBook MPS · /Users/fullfocus/llm_training/architecture.html
+  </p>
+</section>
+
+</main>
+</body>
+</html>
