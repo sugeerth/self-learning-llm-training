@@ -139,11 +139,19 @@ class Attention(nn.Module):
 
 
 # ---------- FFNs ----------
+# Round FFN hidden dims up to a multiple of 64 so the matmuls hit hardware-
+# friendly tile sizes (same trick LLaMA uses); shared by both FFN variants.
+FFN_HIDDEN_MULTIPLE = 64
+
+
+def _round_up(n: int, multiple: int = FFN_HIDDEN_MULTIPLE) -> int:
+    return multiple * ((n + multiple - 1) // multiple)
+
+
 class SwiGLU(nn.Module):
     def __init__(self, cfg: ModelConfig):
         super().__init__()
-        hidden = int(cfg.d_model * cfg.d_ff_mult)
-        hidden = 64 * ((hidden + 63) // 64)
+        hidden = _round_up(int(cfg.d_model * cfg.d_ff_mult))
         self.w1 = nn.Linear(cfg.d_model, hidden, bias=False)
         self.w3 = nn.Linear(cfg.d_model, hidden, bias=False)
         self.w2 = nn.Linear(hidden, cfg.d_model, bias=False)
@@ -155,8 +163,7 @@ class SwiGLU(nn.Module):
 class GELU_FFN(nn.Module):
     def __init__(self, cfg: ModelConfig):
         super().__init__()
-        hidden = int(cfg.d_model * 4)  # GPT-2 convention
-        hidden = 64 * ((hidden + 63) // 64)
+        hidden = _round_up(int(cfg.d_model * 4))  # GPT-2 convention: 4x d_model
         self.w1 = nn.Linear(cfg.d_model, hidden, bias=False)
         self.w2 = nn.Linear(hidden, cfg.d_model, bias=False)
 
