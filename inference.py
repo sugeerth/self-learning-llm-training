@@ -62,7 +62,10 @@ class NativeEngine:
         self.device = device or ("cuda" if torch.cuda.is_available()
                                  else "mps" if torch.backends.mps.is_available() else "cpu")
         self.model = LLM(cfg).to(self.device)
-        self.model.load_state_dict(ckpt["state_dict"])
+        # Checkpoints are written under the "model" key (train.py / experiments.py);
+        # accept the legacy "state_dict" key too for forward-compatibility.
+        state = ckpt["model"] if "model" in ckpt else ckpt["state_dict"]
+        self.model.load_state_dict(state)
         self.model.eval()
         self.quantization = quantization
         if quantization == "int8":
