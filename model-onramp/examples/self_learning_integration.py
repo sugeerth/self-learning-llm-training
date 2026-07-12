@@ -1,38 +1,53 @@
-"""How self-learning-llm-training plugs into the on-ramp (Phase 3 preview).
+"""How self-learning-llm-training plugs into the on-ramp (Phase 3).
 
-Instead of hard-coding a model id per agent, each agent role declares the
-capabilities it needs and resolves a model at runtime. When a new model is
-onboarded (one adapter file + a probe run), it becomes eligible for every
-role it qualifies for — with zero changes in the self-learning repo.
+Instead of hard-coding a model id per agent, each agent role resolves a
+model at runtime through OnrampClient — which also gives it failover and
+session cost caps for free. When a new model is onboarded (one adapter file
++ a probe run), it becomes eligible for every role it qualifies for with
+zero changes in the self-learning repo.
+
+Run offline (no API keys) with a mock model:
+
+    PYTHONPATH=. python3 examples/self_learning_integration.py --mock
 """
 
-from onramp import get_registry
+import sys
 
-# Role profiles: capability requirements, not model names.
-ROLE_PROFILES = {
-    # Judges must produce machine-parseable verdicts reliably.
-    "judge": dict(json_reliability=0.95),
-    # The MetaJudge audits long transcripts, so favor context (Phase 1 probe).
-    "meta_judge": dict(json_reliability=0.95),
-    # Trainers generate lots of tokens; find() already ranks cheapest-first.
-    "trainer": dict(json_reliability=0.8),
-}
+from onramp import OnrampClient, register
+from onramp.routing import NoEligibleModelError
 
 
-def resolve(role: str) -> str:
-    registry = get_registry()
-    candidates = registry.find(**ROLE_PROFILES[role])
-    if not candidates:
-        raise RuntimeError(
-            f"no probed model satisfies role '{role}' — onboard one with "
-            f"'python -m onramp probe <model-id>'"
-        )
-    return candidates[0]
+def main() -> None:
+    if "--mock" in sys.argv:
+        from onramp.probes import run_probes
+        from onramp.registry import get_registry
+        from onramp.testing import make_mock
+
+        register(make_mock("demo-model"))
+        run_probes(get_registry().get("demo-model"), budget_usd=1.0,
+                   max_context_tokens=16_000)
+
+    client = OnrampClient(cost_cap_usd=5.00)  # whole session capped at $5
+
+    for role in ("judge", "meta_judge", "trainer", "drafter", "tool_agent"):
+        try:
+            candidates = client.router.candidates(role)
+            print(f"{role:<12} -> {candidates[0]:<20} (fallback chain: {candidates})")
+        except (NoEligibleModelError, IndexError):
+            print(f"{role:<12} -> no eligible model; probe one first")
+
+    # An agent call: no model name anywhere.
+    try:
+        verdict = client.generate(
+            'Return ONLY a JSON object of the form {"verdict": <string>, '
+            '"confidence": <integer>} judging the answer "42".',
+            role="judge", max_tokens=100)
+        print(f"\njudge said: {verdict.text!r}")
+        print(f"served by {verdict.model_id}, cost ${verdict.cost_usd:.6f}, "
+              f"session total ${client.spent_usd:.6f}")
+    except NoEligibleModelError as err:
+        print(f"\n{err}")
 
 
 if __name__ == "__main__":
-    for role in ROLE_PROFILES:
-        try:
-            print(f"{role:<12} -> {resolve(role)}")
-        except RuntimeError as err:
-            print(f"{role:<12} -> {err}")
+    main()

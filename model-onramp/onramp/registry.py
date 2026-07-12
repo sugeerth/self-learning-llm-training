@@ -21,6 +21,12 @@ def register(cls: type) -> type:
     return cls
 
 
+def unregister(model_id: str) -> None:
+    """Mainly for tests and hot-swapping; removing an adapter file is the
+    normal way to retire a model."""
+    _ADAPTERS.pop(model_id, None)
+
+
 class Registry:
     def __init__(self) -> None:
         self._discover()
@@ -38,7 +44,13 @@ class Registry:
     def model_ids(self) -> list[str]:
         return sorted(_ADAPTERS)
 
+    def __contains__(self, model_id: str) -> bool:
+        return model_id in _ADAPTERS
+
     def get(self, model_id: str) -> ModelAdapter:
+        if model_id not in _ADAPTERS:
+            raise KeyError(
+                f"unknown model '{model_id}' — registered: {self.model_ids()}")
         if model_id not in self._instances:
             self._instances[model_id] = _ADAPTERS[model_id]()
         return self._instances[model_id]

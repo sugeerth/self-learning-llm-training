@@ -4,56 +4,60 @@ Goal: infrastructure that never needs to change when a new model is released.
 A new model = one adapter file + an automatic probe run. Everything downstream
 (training, eval, judging, dashboards) works on top of the registry.
 
-## Phase 0 — Contract (this scaffold)
+## Phase 0 — Contract ✅
 
-- [x] `ModelAdapter` protocol: the minimal surface every model must expose
-      (`generate`, `chat`, `model_id`, `pricing`).
-- [x] Self-registering adapter pattern (`@register` decorator + directory scan).
+- [x] `AdapterBase` / `ModelAdapter`: implement `_complete()`, get timing,
+      token accounting, and per-call cost (`ChatResult`) for free.
+- [x] Self-registering adapter pattern (`@register` + directory scan) with
+      `unregister` for tests/hot-swap.
 - [x] Capability manifest schema (dataclass, JSON-serializable, versioned).
-- [x] One real adapter (Anthropic Claude) + `_template.py` for new models.
-- [x] CLI skeleton: `python -m onramp list | probe <model>`.
+- [x] Adapters: Anthropic Claude (Opus 4.8 / Sonnet 5 / Haiku 4.5), generic
+      OpenAI-compatible endpoint (env-configured), `_template.py`.
+- [x] Mock adapters (`onramp/testing.py`) so the full pipeline runs offline.
 
-Exit criteria: a second adapter can be added by copying the template and
+Exit criteria met: a second adapter is added by copying the template and
 touching nothing else.
 
-## Phase 1 — Empirical capability probes
+## Phase 1 — Empirical capability probes ✅
 
-The differentiator: manifests are **measured, not declared**.
+- [x] JSON probe: 5 varied schemas → parse-success rate.
+- [x] Instruction probe: deterministic 5-item rubric (no judge model needed).
+- [x] Tool-use probe: schema → well-formed-call rate with argument checks.
+- [x] Latency probe: measured output tokens/second.
+- [x] Context probe: needle-in-haystack at doubling sizes (1k → 128k),
+      reports largest passing size; stops early on budget or provider limits.
+- [x] Manifest cache keyed by probe-suite version; stale manifests re-probe.
+- [x] Probe budget guard: hard USD cap per onboarding run
+      (`onramp probe <id> --budget 0.50`); partial manifests persist.
+- [x] Event stream (`.onramp/events.jsonl`) for dashboard consumption.
 
-- [ ] Probe suite, each probe returning a scored result:
-  - context probe: bisection on prompt length until failure → usable context
-  - JSON probe: N structured-output requests → parse-success rate
-  - tool-use probe: does the model emit well-formed tool calls?
-  - instruction probe: small fixed rubric, scored by a judge model
-  - latency/cost probe: tokens/sec and $/1k tokens measured live
-- [ ] Manifest cache keyed by (model_id, probe-suite version); re-probe only
-      when the suite changes or on `--force`.
-- [ ] Probe budget guard: hard cap on $ spent per onboarding run.
+## Phase 2 — Capability-based routing ✅
 
-## Phase 2 — Capability-based routing
-
-- [ ] `registry.find(needs=...)` query API: filter and rank models by manifest
-      fields (e.g. `json_reliability >= 0.95, context >= 100_000`, sort by cost).
-- [ ] Role profiles: named capability requirements ("judge", "drafter",
-      "long-context-reader") defined once, resolved to concrete models at runtime.
-- [ ] Fallback chains: ordered candidate lists with automatic failover.
+- [x] `registry.find(**needs)` query API (min-threshold for numbers, exact
+      for booleans; unprobed models never qualify).
+- [x] Role profiles (judge / meta_judge / trainer / drafter / tool_agent),
+      overridable via `roles.json`; rank by cost or speed.
+- [x] Fallback chains: `Router.candidates(role)` is the ordered chain;
+      `OnrampClient` walks it on provider failure with per-session cost caps.
 
 ## Phase 3 — Integrate self-learning-llm-training
 
 - [ ] Replace hard-coded model ids in the Trainer/Evaluator/Judge/MetaJudge
-      agents with role-profile lookups against the registry.
+      agents with `OnrampClient(role=...)` calls
+      (see `examples/self_learning_integration.py` for the pattern).
 - [ ] Hyperband scheduler reads cost from manifests to allocate budget.
-- [ ] Dashboard panel: registered models, manifest diffs over time.
+- [ ] Dashboard panel: registered models, manifest diffs, event stream tail.
 
 Exit criteria: dropping in an adapter for a brand-new model makes it eligible
 for every agent role in the self-learning loop with no code changes there.
 
-## Phase 4 — Continuous re-validation
+## Phase 4 — Continuous re-validation (drift detection ✅, scheduling ☐)
 
-- [ ] Scheduled re-probing: detect silent model updates (same id, new behavior)
-      by manifest drift.
-- [ ] Manifest history + diff alerts ("json_reliability dropped 0.98 → 0.85").
-- [ ] Optional: publish manifests as a static JSON feed the dashboard consumes.
+- [x] Manifest history: every probe run appends an immutable snapshot.
+- [x] `onramp drift <model>`: compares the two latest snapshots, exits
+      non-zero on >10% relative change — catches silent model updates.
+- [ ] Scheduled re-probing (cron / CI job) + alerting on drift.
+- [ ] Publish manifests as a static JSON feed the dashboard consumes.
 
 ## Non-goals
 
