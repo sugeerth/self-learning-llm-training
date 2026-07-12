@@ -182,12 +182,15 @@ def make_report(results: dict[str, list[Trajectory]], budget: int,
                 skipped: list[str]) -> dict:
     """results: arm -> one Trajectory per seed."""
     fractions = (0.25, 0.5, 0.75, 1.0)
-    # regret target = random search's mean final best; speedups are normalized
-    # by the steps RANDOM itself took to first reach that quality (not by the
-    # budget — random may hit its final best early, and it must score ~1.0x)
-    target = _mean_std([t.best_at(budget) for t in results["random"]])[0]
-    rand_steps = [t.steps_to_reach(target) or budget for t in results["random"]]
-    baseline_steps = sum(rand_steps) / len(rand_steps)
+    # PAIRED comparison: seed i of every arm is measured against seed i of
+    # random (same seed index = same candidate RNG luck). A pooled mean target
+    # would let one seed's luck set another seed's bar — random itself can
+    # fail to "reach" its own average that way. Speedup per seed is
+    # rand_reach_i / arm_reach_i; random scores ~1.0x by construction.
+    rand_trajs = results["random"]
+    targets = [t.best_at(budget) for t in rand_trajs]          # per-seed final best
+    rand_reach = [t.steps_to_reach(targets[i]) or budget
+                  for i, t in enumerate(rand_trajs)]
 
     arms_out = {}
     for arm, trajs in results.items():
@@ -196,36 +199,41 @@ def make_report(results: dict[str, list[Trajectory]], budget: int,
             m, s = _mean_std([t.best_at(int(budget * f)) for t in trajs])
             curve[f"{int(f * 100)}%"] = {"best_ppl_mean": round(m, 2),
                                          "best_ppl_std": round(s, 2)}
-        reached = [t.steps_to_reach(target) for t in trajs]
-        reached_steps = [r for r in reached if r is not None]
+        reach = [t.steps_to_reach(targets[i]) for i, t in enumerate(trajs)]
+        hit = [i for i, r in enumerate(reach) if r is not None]
+        speedups = [rand_reach[i] / reach[i] for i in hit]
         arms_out[arm] = {
             "seeds": len(trajs),
             "evals_per_seed": round(sum(len(t.points) for t in trajs) / len(trajs), 1),
             "best_ppl_at_budget": curve,
-            "steps_to_random_final": (round(sum(reached_steps) / len(reached_steps))
-                                      if len(reached_steps) == len(trajs) else None),
+            "reached_seeds": f"{len(hit)}/{len(trajs)}",
+            "steps_to_random_final": (round(sum(reach[i] for i in hit) / len(hit))
+                                      if hit else None),
+            "speedup_vs_random": (round(sum(speedups) / len(speedups), 2)
+                                  if speedups else None),
             "trajectories": [t.points for t in trajs],
         }
-        s2r = arms_out[arm]["steps_to_random_final"]
-        arms_out[arm]["speedup_vs_random"] = (round(baseline_steps / s2r, 2)
-                                              if s2r else None)
-    return {"budget_steps": budget, "regret_target_ppl": round(target, 2),
-            "random_steps_to_target": round(baseline_steps),
+    return {"budget_steps": budget,
+            "regret_target_ppl": round(_mean_std(targets)[0], 2),
+            "regret_targets_per_seed": [round(t, 2) for t in targets],
+            "random_steps_to_target": round(sum(rand_reach) / len(rand_reach)),
             "val_batches": VAL_BATCHES, "deterministic_val": True,
             "skipped_arms": skipped, "arms": arms_out}
 
 
 def print_report(report: dict) -> None:
     print(f"\narms: budget={report['budget_steps']} steps/arm/seed, "
-          f"regret target (random's final best) = ppl {report['regret_target_ppl']}")
-    hdr = f"{'arm':<10} {'evals':>6} {'best@50%':>10} {'best@100%':>10} {'steps→target':>13} {'speedup':>8}"
+          f"per-seed regret targets (random's finals) = {report['regret_targets_per_seed']}")
+    hdr = (f"{'arm':<10} {'evals':>6} {'best@50%':>10} {'best@100%':>10} "
+           f"{'reached':>8} {'steps→target':>13} {'speedup':>8}")
     print(hdr + "\n" + "-" * len(hdr))
     for arm, a in report["arms"].items():
         s2r = a["steps_to_random_final"]
         print(f"{arm:<10} {a['evals_per_seed']:>6} "
               f"{a['best_ppl_at_budget']['50%']['best_ppl_mean']:>10} "
               f"{a['best_ppl_at_budget']['100%']['best_ppl_mean']:>10} "
-              f"{s2r if s2r else 'not reached':>13} "
+              f"{a['reached_seeds']:>8} "
+              f"{s2r if s2r else '—':>13} "
               f"{str(a['speedup_vs_random']) + 'x' if a['speedup_vs_random'] else '—':>8}")
     if report["skipped_arms"]:
         print(f"arms: skipped (no ANTHROPIC_API_KEY): {', '.join(report['skipped_arms'])}")
@@ -336,6 +344,30 @@ def run_arms(seeds: int, budget: int, bracket: Bracket, full_steps: int) -> dict
     return report
 
 
+def rebuild_report(path: str = REPORT_JSON) -> dict:
+    """Recompute all metrics + the plot from a saved report's trajectories.
+    Metric definitions can evolve without re-spending the training compute."""
+    with open(path) as f:
+        old = json.load(f)
+    results: dict[str, list[Trajectory]] = {}
+    for arm, a in old["arms"].items():
+        trajs = []
+        for pts in a["trajectories"]:
+            t, prev = Trajectory(), 0
+            for p in pts:
+                t.record({"val_ppl": p["ppl"]}, p["steps"] - prev)
+                prev = p["steps"]
+            trajs.append(t)
+        results[arm] = trajs
+    report = make_report(results, old["budget_steps"], old.get("skipped_arms", []))
+    with open(REPORT_JSON, "w") as f:
+        json.dump(report, f, indent=2)
+    write_html(report)
+    print_report(report)
+    print(f"arms: rebuilt {REPORT_JSON} and {REPORT_HTML}")
+    return report
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -343,9 +375,12 @@ def main() -> None:
     r.add_argument("--seeds", type=int, default=3)
     r.add_argument("--budget", type=int, default=256, help="training steps per arm per seed")
     r.add_argument("--quick", action="store_true", help="2 seeds x 96 steps (~10 min CPU)")
+    sub.add_parser("report", help="recompute metrics + plot from saved trajectories")
     args = ap.parse_args()
 
-    if args.cmd == "run":
+    if args.cmd == "report":
+        rebuild_report()
+    elif args.cmd == "run":
         seeds, budget = args.seeds, args.budget
         if args.quick:
             seeds, budget = 2, 96

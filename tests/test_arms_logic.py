@@ -47,3 +47,26 @@ def test_make_report_normalizes_speedup_by_randoms_own_reach():
     assert report["arms"]["random"]["speedup_vs_random"] == pytest.approx(1.0)
     assert report["arms"]["smart"]["speedup_vs_random"] == pytest.approx(2.0)
     assert report["arms"]["smart"]["steps_to_random_final"] == 30
+
+
+def test_make_report_pairs_targets_per_seed():
+    """A pooled mean target lets seed luck cross-contaminate: an unlucky random
+    seed would never 'reach' the lucky seed's quality. Pairing by seed index
+    keeps every random seed at ~1.0x and scores arms seed-by-seed."""
+    budget = 100
+    rand_lucky = _traj([(50, 40.0), (50, 40.0)])      # final best 40
+    rand_unlucky = _traj([(50, 90.0), (50, 88.0)])    # final best 88 (> mean 64)
+    # smart beats each paired target at half the steps random needed
+    smart0 = _traj([(25, 39.0)])    # rand seed 0 reached at 50 -> 2.0x
+    smart1 = _traj([(50, 80.0)])    # rand seed 1 reached at 100 -> 2.0x
+    report = make_report({"random": [rand_lucky, rand_unlucky],
+                          "smart": [smart0, smart1]}, budget, skipped=[])
+
+    assert report["regret_targets_per_seed"] == [40.0, 88.0]
+    r = report["arms"]["random"]
+    assert r["reached_seeds"] == "2/2"                # both reach their OWN final
+    assert r["speedup_vs_random"] == pytest.approx(1.0)
+    s = report["arms"]["smart"]
+    assert s["reached_seeds"] == "2/2"
+    assert s["speedup_vs_random"] == pytest.approx(2.0)
+
