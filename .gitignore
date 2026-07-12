@@ -1,46 +1,41 @@
-# Secrets
-.env
-.env.*
+
 !.env.example
-.claude/
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.egg-info/
-.venv/
-venv/
-env/
-.pytest_cache/
-
-# Node
-node_modules/
-
-# OS
-.DS_Store
-
+# Build output
+# Experiment tracking / logs
+# Large files (>50MB) — excluded explicitly
 # Model artifacts
+# Node
+# OS
+# Python
+# Secrets
+*.bin
 *.ckpt
+*.egg-info/
+*.gguf
+*.h5
+*.log
+*.onnx
 *.pt
 *.pth
-*.bin
+*.pyc
+*.pyo
 *.safetensors
-*.h5
-*.onnx
-*.gguf
-checkpoints/
-
-# Large files (>50MB) — excluded explicitly
-ckpt.pt
-
-# Experiment tracking / logs
-wandb/
-ray_results/
+.DS_Store
+.claude/
+.env
+.env.*
 .ipynb_checkpoints/
-*.log
-
-# Build output
-dist/
-build/
 .next/
+.onramp/
+.pytest_cache/
+.venv/
+__pycache__/
+build/
+checkpoints/
+ckpt.pt
+dist/
+env/
+node_modules/
+ray_results/
+venv/
+wandb/
