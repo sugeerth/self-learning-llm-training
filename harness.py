@@ -157,13 +157,16 @@ def _train_task(task: dict) -> dict:
     train_s = time.time() - t0
 
     model.eval()
-    val_losses = []
-    with torch.no_grad():
-        for _ in range(task["val_batches"]):
-            x, y = val_loader.batch()
-            _, loss = model(x, targets=y)
-            val_losses.append(loss.item())
-    val_loss = float(sum(val_losses) / max(len(val_losses), 1))
+    if task.get("deterministic_val"):
+        val_loss = _fixed_val_loss(model, val_bin, mc, task["val_batches"], bs, device)
+    else:
+        val_losses = []
+        with torch.no_grad():
+            for _ in range(task["val_batches"]):
+                x, y = val_loader.batch()
+                _, loss = model(x, targets=y)
+                val_losses.append(loss.item())
+        val_loss = float(sum(val_losses) / max(len(val_losses), 1))
 
     sample = ""
     if task.get("want_sample"):
@@ -187,6 +190,28 @@ def _train_task(task: dict) -> dict:
         "params_m": round(model.num_params() / 1e6, 2),
         "trained_steps": total_steps,
     }
+
+
+def _fixed_val_loss(model, val_bin: str, mc, batches: int, batch_size: int,
+                    device: str) -> float:
+    """Deterministic validation: fixed sequential windows of the val set.
+
+    Random val batches are fine for one run but make cross-arm comparisons
+    noisy — two identical models can differ by luck of the draw. Fixed windows
+    make val_ppl a pure function of the weights."""
+    import numpy as np
+    data = np.memmap(val_bin, dtype=np.uint16, mode="r")
+    seq = mc.max_seq_len
+    losses = []
+    with torch.no_grad():
+        for b in range(batches):
+            idx = [((b * batch_size + j) * seq) % (len(data) - seq - 1)
+                   for j in range(batch_size)]
+            x = torch.stack([torch.from_numpy(data[i:i + seq].astype("int64")) for i in idx])
+            y = torch.stack([torch.from_numpy(data[i + 1:i + 1 + seq].astype("int64")) for i in idx])
+            _, loss = model(x.to(device), targets=y.to(device))
+            losses.append(loss.item())
+    return float(sum(losses) / max(len(losses), 1))
 
 
 def _generate_sample(model, device: str, prompt: str = "ROMEO:\n") -> str:
@@ -237,6 +262,10 @@ def parallel_halving(
     run_dir: str | None = None,
     val_batches_rung: int = 8,
     val_batches_final: int = 20,
+    pool: ProcessPoolExecutor | None = None,   # reuse an outer warm pool
+    want_sample: bool = True,
+    deterministic_val: bool = False,
+    on_eval=None,                 # callback(cfg, eval_dict, delta_steps) per eval
 ) -> list[dict]:
     """Drop-in for hyperband.successive_halving, but parallel + promoted.
 
@@ -258,10 +287,13 @@ def parallel_halving(
     trained = {i: 0 for i in range(len(survivors))}   # cid -> cumulative steps
     target = bracket.initial_steps
 
-    ctx = get_context("spawn")
-    with ProcessPoolExecutor(max_workers=profile.workers, mp_context=ctx,
-                             initializer=_worker_init,
-                             initargs=(profile.threads_per_worker,)) as pool:
+    own_pool = pool is None
+    if own_pool:
+        pool = ProcessPoolExecutor(max_workers=profile.workers,
+                                   mp_context=get_context("spawn"),
+                                   initializer=_worker_init,
+                                   initargs=(profile.threads_per_worker,))
+    try:
         cores = os.cpu_count() or 2
         for halving in range(bracket.halvings + 1):
             last_rung = halving == bracket.halvings
@@ -277,13 +309,16 @@ def parallel_halving(
                     "val_batches": val_batches_final if last_rung else val_batches_rung,
                     "ckpt_in": ck if trained[cid] else None, "ckpt_out": ck,
                     "want_sample": False, "device": device,
+                    "deterministic_val": deterministic_val,
                 })
             t0 = time.time()
             evals = list(pool.map(_train_task, tasks))
-            for cfg, ev in zip(survivors, evals):
+            for cfg, ev, task in zip(survivors, evals, tasks):
                 cfg["_eval"] = ev
                 cfg["_steps"] = ev["trained_steps"]
                 trained[cfg["_cid"]] = ev["trained_steps"]
+                if on_eval is not None:
+                    on_eval(cfg, ev, task["steps"])
             survivors.sort(key=lambda c: c["_eval"]["val_ppl"])
             _log_event(stage="harness_rung", rung=halving, steps=target,
                        n=len(survivors), best_ppl=survivors[0]["_eval"]["val_ppl"],
@@ -291,14 +326,18 @@ def parallel_halving(
             if not last_rung:
                 survivors = survivors[: max(1, len(survivors) // bracket.eta)]
                 target *= bracket.eta
+    finally:
+        if own_pool:
+            pool.shutdown()
 
-    # one sample for the winner only — the slow autoregressive part runs once
-    winner = survivors[0]
-    ck = os.path.join(run_dir, f"c{winner['_cid']}.pt")
-    model = LLM(ModelConfig(**_clean(winner))).to(device)
-    model.load_state_dict(torch.load(ck, map_location=device, weights_only=False)["model"])
-    model.eval()
-    winner["_eval"]["sample"] = _generate_sample(model, device)
+    if want_sample:
+        # one sample for the winner only — the slow autoregressive part runs once
+        winner = survivors[0]
+        ck = os.path.join(run_dir, f"c{winner['_cid']}.pt")
+        model = LLM(ModelConfig(**_clean(winner))).to(device)
+        model.load_state_dict(torch.load(ck, map_location=device, weights_only=False)["model"])
+        model.eval()
+        winner["_eval"]["sample"] = _generate_sample(model, device)
     return survivors
 
 

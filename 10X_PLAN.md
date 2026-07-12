@@ -17,6 +17,14 @@ Everything below serves that. Three pillars, in priority order.
 
 ## Pillar 1 — Make the learning signal real (the science 10x)
 
+> **Status: 1.1 shipped (first cut).** `arms.py` runs random / hyperband / prior (and
+> agent, when a key is set) at an identical training-step budget with a deterministic
+> fixed-window eval, and reports **steps-to-reach-random's-final-quality** — the
+> regret-vs-random headline — plus a self-contained SVG regret plot
+> (`arms_report.html`). Arms execute through the throughput harness, so the proof is
+> cheap enough to rerun on every change. Next: fold the real eval suite (1.2) into
+> the arms' metric.
+
 The current loop is honest about being a demo: 100-step runs, char-level data, cloze accuracy,
 a self-rated 1–10 "sample quality". A skeptic would say the agents are commentary on top of
 Hyperband, not a control system. Fix that.

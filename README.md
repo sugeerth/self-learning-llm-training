@@ -80,6 +80,23 @@ the candidate count, so the same harness scales toward ~10x with more cores or G
 If tiktoken cannot fetch the GPT-2 vocab (offline/air-gapped), data prep degrades
 gracefully to a byte-level tokenizer.
 
+## Baseline arms (regret vs. random)
+
+`arms.py` is the proof side (see `10X_PLAN.md`, Pillar 1): it runs **random search**,
+**Hyperband**, **Hyperband + CheapPrior**, and (with an API key) **+ Trainer agent**
+at an identical training-step budget, scored by an identical deterministic
+fixed-window eval, all executing through the throughput harness. The headline is
+*steps to reach random search's final quality*, normalized by the steps random itself
+needed — the single number that says whether the loop is actually learning.
+
+```sh
+python3 arms.py run --quick      # 2 seeds x 96-step budget (~20 min on 4 CPU cores)
+python3 arms.py run              # 3 seeds x 256-step budget
+```
+
+Outputs `arms_report.json` (trajectories + per-arm quality at 25/50/75/100% of budget)
+and `arms_report.html` (self-contained SVG regret plot, no dependencies).
+
 ## Architecture
 
 ```

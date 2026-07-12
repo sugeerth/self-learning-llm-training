@@ -38,6 +38,8 @@ ckpt.pt
 runs/
 harness_profile.json
 bench_harness.json
+arms_report.json
+arms_report.html
 
 # Experiment tracking / logs
 wandb/
