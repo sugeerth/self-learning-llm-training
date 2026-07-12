@@ -9,9 +9,19 @@ are commentary, not a control system. Everything here serves that one claim.
 - **Throughput is solved enough.** `harness.py` (parallel rungs + checkpoint promotion +
   self-tuning) gives 2.1–2.3x on 4 CPU cores — near that box's measured 1.63x parallel
   ceiling; it scales with cores/GPUs. Run via `self_learning_runner.py --harness`.
-- **Hyperband earns its keep; the prior doesn't yet.** At equal compute (2 seeds × 96 steps),
-  Hyperband ends 25% better than random (ppl 159 vs 213); the CheapPrior arm showed no gain —
-  it only gets ~3 full-depth evals per run to learn from.
+- **Hyperband's edge is budget-dependent.** At 96-step budgets it ends 25% better than
+  random (ppl 159 vs 213); at 192 steps the gap narrows to noise (18.9 vs 19.6 mean final,
+  0.67x paired steps-to-target) — random search with full-depth evals is a strong anytime
+  baseline at this scale.
+- **Warm-starting the prior is not free.** With cross-run persistence on (3 seeds × 192),
+  one warmed seed produced the second-best final anywhere (18.09) and another spent half its
+  budget in a terrible region (best 245 at 50%, recovered to 20.5). The acquisition needs
+  depth-aware features / better uncertainty before compounding helps reliably.
+- **Single-shot synthetic mixing is harmless; ITERATED self-training slowly degrades.**
+  One-shot A/B: mix@5% −0.24%, mix@18% +0.06% (neutral). But over 3 self-training
+  generations, real-val drift compounds monotonically: +0.62% → +0.89% → +1.15%
+  (~+0.4%/generation) — the classic model-collapse signature, measured offline with
+  heuristic filters. Stronger (judge) filtering is the lever to test next.
 - **The agent arm is untested.** `arms.py` supports it but needs an `ANTHROPIC_API_KEY`.
   The core thesis of the repo has not yet been measured.
 - **Measure carefully or be fooled.** Two real bugs found only because we benchmarked:
