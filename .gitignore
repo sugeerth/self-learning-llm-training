@@ -40,6 +40,8 @@ harness_profile.json
 bench_harness.json
 arms_report.json
 arms_report.html
+flywheel_report.json
+prior_store.json
 
 # Experiment tracking / logs
 wandb/

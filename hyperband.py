@@ -85,6 +85,31 @@ class CheapPrior:
         mean, unc = self.predict(cfg)
         return mean - kappa * unc
 
+    # ── persistence: the prior starves inside one run; let it compound ──
+
+    def save(self, path: str = "prior_store.json") -> None:
+        with open(path, "w") as f:
+            json.dump({"length_scale": self.l,
+                       "X": [x.tolist() for x in self.X], "y": self.y}, f)
+
+    @classmethod
+    def load(cls, path: str = "prior_store.json") -> "CheapPrior":
+        """Missing/corrupt file -> empty prior (never raises)."""
+        p = cls()
+        try:
+            with open(path) as f:
+                d = json.load(f)
+            p.l = d.get("length_scale", p.l)
+            p.X = [np.asarray(x, dtype=float) for x in d.get("X", [])]
+            p.y = [float(v) for v in d.get("y", [])]
+        except (FileNotFoundError, json.JSONDecodeError, KeyError, TypeError):
+            pass
+        return p
+
+    def extend(self, other: "CheapPrior") -> None:
+        self.X.extend(other.X)
+        self.y.extend(other.y)
+
 
 # ── successive-halving runner ──────────────────────────────────────────
 

@@ -96,11 +96,16 @@ def run_random(seed: int, budget: int, full_steps: int, profile: HarnessProfile,
 
 def run_bracketed(seed: int, budget: int, bracket: Bracket,
                   profile: HarnessProfile, pool: ProcessPoolExecutor,
-                  use_prior: bool, use_agent: bool) -> Trajectory:
-    """Hyperband arm; optionally prior-seeded proposals and agent proposals."""
+                  use_prior: bool, use_agent: bool,
+                  warm_prior_path: str | None = None) -> Trajectory:
+    """Hyperband arm; optionally prior-seeded proposals and agent proposals.
+    With warm_prior_path, the prior loads accumulated cross-run knowledge at
+    start and saves back at the end — runs compound instead of starving."""
     rng = random.Random(seed)
     traj = Trajectory()
-    prior = CheapPrior() if use_prior else None
+    prior = None
+    if use_prior:
+        prior = CheapPrior.load(warm_prior_path) if warm_prior_path else CheapPrior()
     final_depth = bracket.initial_steps * bracket.eta ** bracket.halvings
     history: list[dict] = []
 
@@ -136,6 +141,8 @@ def run_bracketed(seed: int, budget: int, bracket: Bracket,
                         "val_ppl": w["_eval"]["val_ppl"],
                         "params_m": w["_eval"]["params_m"]})
         b += 1
+    if prior is not None and warm_prior_path:
+        prior.save(warm_prior_path)
     return traj
 
 
@@ -301,7 +308,8 @@ speedup over random. Thin lines are individual seeds.</p>
 
 # ────────────────────────── driver ──────────────────────────
 
-def run_arms(seeds: int, budget: int, bracket: Bracket, full_steps: int) -> dict:
+def run_arms(seeds: int, budget: int, bracket: Bracket, full_steps: int,
+             warm_prior_path: str | None = None) -> dict:
     profile = load_or_tune(quick=True)
     from data import prepare
     prepare()  # once, before pool spawn
@@ -311,7 +319,8 @@ def run_arms(seeds: int, budget: int, bracket: Bracket, full_steps: int) -> dict
         "hyperband": lambda s, pool: run_bracketed(s, budget, bracket, profile, pool,
                                                    use_prior=False, use_agent=False),
         "prior": lambda s, pool: run_bracketed(s, budget, bracket, profile, pool,
-                                               use_prior=True, use_agent=False),
+                                               use_prior=True, use_agent=False,
+                                               warm_prior_path=warm_prior_path),
     }
     skipped = []
     if os.environ.get("ANTHROPIC_API_KEY"):
@@ -375,6 +384,8 @@ def main() -> None:
     r.add_argument("--seeds", type=int, default=3)
     r.add_argument("--budget", type=int, default=256, help="training steps per arm per seed")
     r.add_argument("--quick", action="store_true", help="2 seeds x 96 steps (~10 min CPU)")
+    r.add_argument("--warm-prior", metavar="PATH", default=None,
+                   help="persist the prior arm's knowledge to PATH across seeds/runs")
     sub.add_parser("report", help="recompute metrics + plot from saved trajectories")
     args = ap.parse_args()
 
@@ -386,7 +397,8 @@ def main() -> None:
             seeds, budget = 2, 96
         bracket = Bracket(n_candidates=4, halvings=2, initial_steps=max(2, budget // 24))
         full_steps = bracket.initial_steps * bracket.eta ** bracket.halvings
-        run_arms(seeds=seeds, budget=budget, bracket=bracket, full_steps=full_steps)
+        run_arms(seeds=seeds, budget=budget, bracket=bracket, full_steps=full_steps,
+                 warm_prior_path=args.warm_prior)
 
 
 if __name__ == "__main__":

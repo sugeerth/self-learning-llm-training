@@ -95,7 +95,24 @@ python3 arms.py run              # 3 seeds x 256-step budget
 ```
 
 Outputs `arms_report.json` (trajectories + per-arm quality at 25/50/75/100% of budget)
-and `arms_report.html` (self-contained SVG regret plot, no dependencies).
+and `arms_report.html` (self-contained SVG regret plot, no dependencies). Add
+`--warm-prior prior_store.json` to let the prior arm compound knowledge across runs.
+
+## Flywheel experiment (does self-generated data help?)
+
+`flywheel.py` turns the synthetic-data claim into a paired A/B: a generator model is
+trained through the harness, generates continuations from real-prefix seeds, survivors of
+a filter are mixed into a real-data subset at each ratio, and identically-seeded models
+are trained on real-only vs mixed corpora and compared on the real validation set.
+Filtering is offline-heuristic by default (degenerate-repetition, low-diversity, and
+near-duplicate gates); with `ANTHROPIC_API_KEY` set, the 3-judge Claude ensemble in
+`synthetic_flywheel.py` takes over.
+
+```sh
+python3 flywheel.py run --quick   # ~10 min on 4 CPU cores -> flywheel_report.json
+```
+
+Each ratio gets a verdict: **gain / neutral / collapse** (±2% relative val loss).
 
 ## Architecture
 

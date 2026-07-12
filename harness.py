@@ -125,6 +125,9 @@ def _train_task(task: dict) -> dict:
         # late rungs have fewer candidates than workers — give each task the
         # cores that would otherwise idle (interop threads stay fixed)
         torch.set_num_threads(task["threads"])
+    if task.get("torch_seed") is not None:
+        # paired experiments (flywheel A/B) need identical init across variants
+        torch.manual_seed(task["torch_seed"])
     device = task.get("device") or _device()
     mc = ModelConfig(**_clean(task["cfg"]))
     model = LLM(mc).to(device)
@@ -139,6 +142,8 @@ def _train_task(task: dict) -> dict:
         prior_steps = ckpt.get("steps", 0)
 
     train_bin, val_bin = prepare()
+    if task.get("train_bin"):
+        train_bin = task["train_bin"]   # e.g. a flywheel-mixed corpus
     bs = task["batch_size"]
     train_loader = Loader(train_bin, block_size=mc.max_seq_len, batch_size=bs, device=device)
     val_loader = Loader(val_bin, block_size=mc.max_seq_len, batch_size=bs, device=device)

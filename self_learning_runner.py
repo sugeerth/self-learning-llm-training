@@ -117,6 +117,7 @@ def main():
         reset_state()
 
     prior = load_prior_from_experiments("experiments.json")
+    prior.extend(CheapPrior.load("prior_store.json"))   # compound across runs
     orchestrator = OrchestratorAgent()
     history: list[dict] = []
     bracket = Bracket(n_candidates=4, halvings=2, initial_steps=max(1, args.max_steps // 4))
@@ -177,6 +178,7 @@ def main():
         # ── update prior with all candidates (not just winner) — more learning per round
         for c in survivors:
             prior.add(c, c["_eval"]["val_ppl"])
+        prior.save("prior_store.json")   # future runs start from this knowledge
         history.append({
             "name": f"round{r+1}-winner",
             "config": winner,

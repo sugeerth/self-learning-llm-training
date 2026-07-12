@@ -22,12 +22,14 @@ are commentary, not a control system. Everything here serves that one claim.
 
 1. **Run the agent arm** (`arms.py`, with a key, ≥3 seeds, ≥256-step budget). This is the
    yes/no on the whole premise. If it doesn't beat random ≥2x, fix the Trainer prompt/loop
-   before building anything else.
-2. **Persist the prior across runs.** The CheapPrior starves within one run; let it load and
-   extend `experiments.json` history so round N+1 starts smarter than round N.
-3. **Wire in the flywheel** (`synthetic_flywheel.py`, currently dead code): winner generates
-   data → judges filter → mix into next round's training set → the arms framework detects
-   gain vs. collapse. This is the actual "self-learning" claim.
+   before building anything else. *(Still blocked on an `ANTHROPIC_API_KEY`.)*
+2. ~~Persist the prior across runs.~~ **Done** — `CheapPrior.save/load`; the runner
+   compounds into `prior_store.json` every round, and `arms.py run --warm-prior PATH`
+   lets the prior arm accumulate across seeds/runs.
+3. ~~Wire in the flywheel.~~ **Done (offline-capable)** — `flywheel.py` runs the full
+   generate → filter → mix → paired-A/B loop with heuristic gates (repetition, diversity,
+   dedup) when no key is set, and the 3-judge Claude ensemble when one is. Verdict per mix
+   ratio: gain / neutral / collapse. See `flywheel_report.json`.
 4. **Feed human-queue decisions back** into the Judge prompt; track Judge–human agreement
    over time.
 
