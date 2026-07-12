@@ -17,10 +17,12 @@ new model release means a sweep through the whole codebase.
 
 model-onramp inverts that:
 
-1. **One-file adapters.** A new model enters the system as a single file
-   subclassing `AdapterBase` — implement `_complete()`, declare pricing, done.
-   Timing, token accounting, and cost come free. Adapters self-register; the
-   registry scans the `adapters/` directory, so there is no central list.
+1. **One-file adapters — or zero.** A new model enters the system as a single
+   file subclassing `AdapterBase` — implement `_complete()`, declare pricing,
+   done. Timing, token accounting, and cost come free. Adapters self-register;
+   the registry scans the `adapters/` directory, so there is no central list.
+   For Anthropic models it's even less: `onramp discover --probe` reads the
+   live Models API and auto-registers anything new — **no code at all**.
 
 2. **Empirical capability probes** *(the novel part)*. On onboarding, the
    on-ramp doesn't trust a hand-written config — it **measures the model**:
@@ -30,16 +32,20 @@ model-onramp inverts that:
    **capability manifest**, and every run appends a history snapshot. A hard
    dollar budget caps each onboarding run.
 
-3. **Capability-based routing with failover.** Roles ("judge", "trainer",
-   "tool_agent") declare capability *requirements*, never model names. The
-   router ranks eligible models by cost or speed — and that ranked list *is*
-   the fallback chain: `OnrampClient` walks it on provider failure, charges
-   every call against a session cost cap, and logs everything to an event
-   stream.
+3. **Capability-based routing with staged rollout and failover.** Roles
+   ("judge", "trainer", "tool_agent") declare capability *requirements*,
+   never model names. Freshly probed models enter as **candidates** —
+   routable, but ranked below **stable** models until `onramp promote`
+   flips them, so a brand-new model can't hijack production traffic on day
+   one. The ranked list *is* the fallback chain: `OnrampClient` retries
+   transient failures with backoff, then walks the chain, charging every
+   call against a session cost cap and logging to an event stream.
 
-4. **Drift detection.** Re-probe on a schedule; `onramp drift <model>`
-   compares the two latest snapshots and exits non-zero when a capability
-   regressed — catching silent model updates (same id, new behavior).
+4. **Drift detection + observability.** Re-probing is a scheduled CI job;
+   `onramp drift <model>` compares the two latest snapshots and exits
+   non-zero when a capability regressed — catching silent model updates
+   (same id, new behavior). `onramp serve` gives a live dashboard;
+   `onramp export` emits a JSON manifest feed for other dashboards.
 
 ```
         new model ships
@@ -86,10 +92,13 @@ PYTHONPATH=. python3 examples/self_learning_integration.py --mock
 
 # With a real key:
 export ANTHROPIC_API_KEY=...
-python -m onramp list                       # discovered models
-python -m onramp probe claude-haiku-4-5     # onboard: measure + manifest
+python -m onramp discover --probe           # auto-register NEW models from the
+                                            #   Models API and measure them
+python -m onramp probe --all --jobs 3       # (re)probe everything in parallel
+python -m onramp promote claude-haiku-4-5   # candidate -> stable (serves first)
 python -m onramp resolve judge              # best model for a role + chain
 python -m onramp drift claude-haiku-4-5     # compare latest two snapshots
+python -m onramp serve                      # live dashboard on :8010
 ```
 
 ## Adding a new model (the whole point)
@@ -118,16 +127,17 @@ in your working directory.
 
 ## Relationship to self-learning-llm-training
 
-This repo is the foundation layer. The
+This repo is the foundation layer, and the integration is **live**: the
 [self-learning-llm-training](https://github.com/sugeerth/self-learning-llm-training)
-loop (Trainer → Evaluator → Judge → MetaJudge) becomes a *consumer*: each
-agent role resolves a model at runtime through the registry. See
-`examples/self_learning_integration.py`.
+loop (Trainer → Evaluator → Judge → MetaJudge → Orchestrator) resolves each
+agent's model by role through `onramp_bridge.py`, falling back to its legacy
+hard-coded ids whenever no probed model qualifies. Onboard a model, and the
+next agent call routes to it — zero changes in the loop's code.
 
 ## Roadmap
 
-See [PLAN.md](PLAN.md). Phases 0–2 are implemented; Phase 3 (wiring the
-self-learning loop) and Phase 4 (scheduled re-validation) are next.
+See [PLAN.md](PLAN.md). Phases 0–3 are implemented, plus drift detection and
+scheduled re-probing from Phase 4.
 
 ## License
 

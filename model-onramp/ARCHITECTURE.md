@@ -27,20 +27,29 @@ adapters ever names a model.
 
   cross-cutting: budget.py (hard $ caps) · events.py (JSONL stream)
                  paths.py (all state under $ONRAMP_HOME, default ./.onramp)
+                 discovery.py (zero-adapter onboarding from the Models API)
+                 dashboard.py (live view + manifest feed, stdlib only)
 ```
 
 ## The onboarding flow
 
 ```
+# Anthropic models: zero files
+python -m onramp discover --probe                # Models API -> adapters -> probes
+
+# anything else: one file
 cp adapters/_template.py adapters/foo_v2.py      # ~20 lines
 python -m onramp probe foo-v2                    # measured, not trusted
-# -> .onramp/manifests/foo-v2.json  (+ history snapshot)
-# -> foo-v2 is now eligible for every role it qualifies for
+# -> .onramp/manifests/foo-v2.json  (+ history snapshot, status=candidate)
+
+python -m onramp promote foo-v2                  # candidate -> stable
 ```
 
 No other file changes. `Router.resolve("judge")` may now return `foo-v2` if
 it probes better/cheaper than the incumbents — infrastructure written before
-foo-v2 existed routes to it automatically.
+foo-v2 existed routes to it automatically. Until promotion, the newcomer is
+routable but ranked below every stable model (staged rollout), and `retire`
+removes a model from routing without deleting its adapter or history.
 
 ## Key design decisions
 

@@ -71,9 +71,14 @@ class Router:
         self.roles = roles or load_roles()
 
     def _rank_key(self, manifest: CapabilityManifest, prefer: str):
+        # Stable models always outrank candidates: a freshly onboarded model
+        # is routable immediately but only serves first once promoted (or
+        # when no stable model qualifies). Retired models never route.
+        tier = 0 if manifest.status == "stable" else 1
         if prefer == "speed":
-            return -(manifest.tokens_per_second or 0.0)
-        return manifest.output_per_mtok or float("inf")
+            return (tier, -(manifest.tokens_per_second or 0.0))
+        return (tier, manifest.output_per_mtok if manifest.output_per_mtok
+                is not None else float("inf"))
 
     def candidates(self, role_name: str) -> list[str]:
         """All eligible models for a role, best-ranked first. This IS the
@@ -82,7 +87,8 @@ class Router:
         eligible = []
         for model_id in self.registry.model_ids():
             manifest = self.registry.manifest(model_id)
-            if manifest and manifest.satisfies(**role.needs):
+            if (manifest and manifest.status != "retired"
+                    and manifest.satisfies(**role.needs)):
                 eligible.append((self._rank_key(manifest, role.prefer), model_id))
         eligible.sort()
         ranked = [model_id for _, model_id in eligible]

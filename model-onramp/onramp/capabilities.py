@@ -31,6 +31,10 @@ class CapabilityManifest:
     probe_suite_version: int = PROBE_SUITE_VERSION
     probed_at: str | None = None
 
+    # Rollout lifecycle: freshly probed models are "candidate" — routable,
+    # but ranked below "stable" models until promoted (onramp promote <id>).
+    status: str = "candidate"
+
     # Measured by probes (None = not yet probed)
     usable_context_tokens: int | None = None
     json_reliability: float | None = None       # 0..1 parse-success rate
@@ -66,17 +70,26 @@ class CapabilityManifest:
     def path(self) -> Path:
         return manifest_dir() / f"{self.model_id}.json"
 
-    def save(self) -> Path:
+    def save(self, snapshot: bool = True) -> Path:
+        """Persist the manifest; snapshot=False updates the cache without
+        appending history (used for lifecycle changes like promote)."""
         if self.probed_at is None:
             self.probed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         payload = json.dumps(asdict(self), indent=2) + "\n"
         manifest_dir().mkdir(parents=True, exist_ok=True)
         self.path.write_text(payload)
-        hist = history_dir(self.model_id)
-        hist.mkdir(parents=True, exist_ok=True)
-        stamp = self.probed_at.replace(":", "-")
-        (hist / f"{stamp}.json").write_text(payload)
+        if snapshot:
+            hist = history_dir(self.model_id)
+            hist.mkdir(parents=True, exist_ok=True)
+            stamp = self.probed_at.replace(":", "-")
+            (hist / f"{stamp}.json").write_text(payload)
         return self.path
+
+    def set_status(self, status: str) -> None:
+        if status not in ("candidate", "stable", "retired"):
+            raise ValueError(f"invalid status '{status}'")
+        self.status = status
+        self.save(snapshot=False)
 
     @classmethod
     def _from_json(cls, raw: str) -> "CapabilityManifest":

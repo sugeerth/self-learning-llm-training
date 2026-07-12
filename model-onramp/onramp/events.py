@@ -7,9 +7,12 @@ single file instead of instrumenting each subsystem."""
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime, timezone
 
 from .paths import events_path
+
+_write_lock = threading.Lock()  # parallel probing appends concurrently
 
 
 def emit(kind: str, **fields) -> dict:
@@ -20,7 +23,7 @@ def emit(kind: str, **fields) -> dict:
     }
     path = events_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a") as fh:
+    with _write_lock, path.open("a") as fh:
         fh.write(json.dumps(event) + "\n")
     return event
 

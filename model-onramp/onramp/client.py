@@ -7,6 +7,8 @@ without knowing any model names."""
 
 from __future__ import annotations
 
+import time
+
 from .adapter import ChatResult
 from .budget import CostTracker
 from .events import emit
@@ -22,9 +24,12 @@ class AllCandidatesFailedError(RuntimeError):
 
 class OnrampClient:
     def __init__(self, router: Router | None = None,
-                 cost_cap_usd: float | None = None):
+                 cost_cap_usd: float | None = None,
+                 max_retries: int = 2, retry_base_delay: float = 0.5):
         self.router = router or Router()
         self.tracker = CostTracker(cap_usd=cost_cap_usd)
+        self.max_retries = max_retries
+        self.retry_base_delay = retry_base_delay
 
     @property
     def spent_usd(self) -> float:
@@ -44,12 +49,22 @@ class OnrampClient:
         errors: dict[str, str] = {}
         for candidate in candidates:
             adapter = self.router.registry.get(candidate)
-            try:
-                result = adapter.chat(messages, max_tokens=max_tokens,
-                                      temperature=temperature)
-            except Exception as err:  # provider outage, rate limit, etc.
-                errors[candidate] = f"{type(err).__name__}: {err}"
-                emit("failover", role=role, failed=candidate, error=str(err))
+            result = None
+            for attempt in range(self.max_retries + 1):
+                try:
+                    result = adapter.chat(messages, max_tokens=max_tokens,
+                                          temperature=temperature)
+                    break
+                except Exception as err:  # provider outage, rate limit, etc.
+                    errors[candidate] = f"{type(err).__name__}: {err}"
+                    if attempt < self.max_retries:
+                        delay = self.retry_base_delay * (2 ** attempt)
+                        emit("retry", model_id=candidate, attempt=attempt + 1,
+                             delay_s=delay, error=str(err))
+                        time.sleep(delay)
+            if result is None:  # retries exhausted -> next candidate
+                emit("failover", role=role, failed=candidate,
+                     error=errors[candidate])
                 continue
             self.tracker.charge(result)
             emit("chat", role=role, model_id=candidate,

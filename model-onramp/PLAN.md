@@ -40,24 +40,40 @@ touching nothing else.
 - [x] Fallback chains: `Router.candidates(role)` is the ordered chain;
       `OnrampClient` walks it on provider failure with per-session cost caps.
 
-## Phase 3 — Integrate self-learning-llm-training
+## Phase 3 — Integrate self-learning-llm-training ✅
 
-- [ ] Replace hard-coded model ids in the Trainer/Evaluator/Judge/MetaJudge
-      agents with `OnrampClient(role=...)` calls
-      (see `examples/self_learning_integration.py` for the pattern).
+- [x] `onramp_bridge.py` in the parent repo: agents resolve models by ROLE
+      (trainer/evaluator/judge/meta_judge/orchestrator) through the router,
+      with graceful fallback to the legacy hard-coded ids at every layer.
+- [x] `BaseAgent.call()` resolves at call time, so a model onboarded mid-run
+      takes over on the very next agent call.
+- [x] Onramp dashboard (`onramp serve`) + manifest feed (`onramp export`)
+      the training dashboard can poll.
 - [ ] Hyperband scheduler reads cost from manifests to allocate budget.
-- [ ] Dashboard panel: registered models, manifest diffs, event stream tail.
 
-Exit criteria: dropping in an adapter for a brand-new model makes it eligible
-for every agent role in the self-learning loop with no code changes there.
+Exit criteria met: onboarding a model (adapter or `onramp discover`) makes
+it eligible for every agent role with no code changes in the loop.
 
-## Phase 4 — Continuous re-validation (drift detection ✅, scheduling ☐)
+## Phase 4 — Continuous re-validation (mostly ✅)
 
 - [x] Manifest history: every probe run appends an immutable snapshot.
 - [x] `onramp drift <model>`: compares the two latest snapshots, exits
       non-zero on >10% relative change — catches silent model updates.
-- [ ] Scheduled re-probing (cron / CI job) + alerting on drift.
-- [ ] Publish manifests as a static JSON feed the dashboard consumes.
+- [x] Scheduled re-probing: weekly CI workflow (`.github/workflows/drift.yml`)
+      re-probes all models in parallel and fails on drift.
+- [x] Manifest feed: `onramp export` publishes registry state as JSON.
+- [ ] Alert routing (Slack/email) on drift-workflow failure.
+
+## Phase 5 — Zero-touch onboarding ✅ (new)
+
+- [x] `onramp discover [--probe]`: reads the live Anthropic Models API and
+      auto-registers adapters for models not yet known — a brand-new model
+      onboards with **zero files written**. Pricing resolves by longest
+      prefix from `discovery.KNOWN_PRICING`; unknown-price models are
+      flagged and blocked from promotion.
+- [x] Staged rollout: probed models start as `candidate` (routable, ranked
+      below `stable`); `onramp promote/demote/retire` manage the lifecycle,
+      so a new model can't take production traffic until a human flips it.
 
 ## Non-goals
 
