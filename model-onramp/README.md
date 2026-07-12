@@ -41,11 +41,20 @@ model-onramp inverts that:
    transient failures with backoff, then walks the chain, charging every
    call against a session cost cap and logging to an event stream.
 
-4. **Drift detection + observability.** Re-probing is a scheduled CI job;
+4. **Self-learning routing** *(the loop, closed)*. Every live call records
+   its outcome, cost, and latency; consumers report quality via
+   `client.feedback()`. A circuit breaker skips models with consecutive
+   live failures; a small exploration share routes traffic to newcomers so
+   they earn evidence; and **autopilot** promotes candidates (or demotes
+   decaying stable models) from that evidence — `onramp autopilot --apply`.
+   Models earn their place with production traffic, not just probes.
+
+5. **Drift detection + observability.** Re-probing is a scheduled CI job;
    `onramp drift <model>` compares the two latest snapshots and exits
    non-zero when a capability regressed — catching silent model updates
-   (same id, new behavior). `onramp serve` gives a live dashboard;
-   `onramp export` emits a JSON manifest feed for other dashboards.
+   (same id, new behavior). `onramp serve` gives a live dashboard (probe
+   scores + live traffic + breaker state); `onramp export` emits a JSON
+   manifest feed for other dashboards.
 
 ```
         new model ships
@@ -127,12 +136,15 @@ in your working directory.
 
 ## Relationship to self-learning-llm-training
 
-This repo is the foundation layer, and the integration is **live**: the
+This repo is the foundation layer, and the integration is **live and
+bidirectional**: the
 [self-learning-llm-training](https://github.com/sugeerth/self-learning-llm-training)
 loop (Trainer → Evaluator → Judge → MetaJudge → Orchestrator) resolves each
 agent's model by role through `onramp_bridge.py`, falling back to its legacy
-hard-coded ids whenever no probed model qualifies. Onboard a model, and the
-next agent call routes to it — zero changes in the loop's code.
+hard-coded ids whenever no probed model qualifies — and every agent call
+reports its outcome back. The Judge's verdicts score the Evaluator's model;
+the MetaJudge's audits score the Judge's model. The judging hierarchy
+literally trains the router that picks its models.
 
 ## Roadmap
 

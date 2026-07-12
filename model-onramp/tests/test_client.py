@@ -89,3 +89,58 @@ def test_role_xor_model_id_required(failover_setup):
         client.generate("hello")
     with pytest.raises(ValueError):
         client.generate("hello", role="judge", model_id="mock-up")
+
+
+def test_breaker_skips_tripped_model(failover_setup, tmp_path):
+    from onramp.stats import StatsStore
+
+    stats = StatsStore(tmp_path / "s.json")
+    for _ in range(3):
+        stats.record_call("mock-down", None, success=False)
+    client = OnrampClient(router=failover_setup, max_retries=0, stats=stats)
+    result = client.generate("hello", role="judge")
+    # mock-down is cheapest but its breaker is open -> mock-up serves without
+    # the client ever attempting mock-down (no new failure recorded)
+    assert result.model_id == "mock-up"
+    assert stats.get("mock-down")["failures"] == 3
+
+
+def test_breaker_ignored_when_all_candidates_tripped(failover_setup, tmp_path):
+    from onramp.stats import StatsStore
+
+    stats = StatsStore(tmp_path / "s.json")
+    for model in ("mock-down", "mock-up"):
+        for _ in range(3):
+            stats.record_call(model, None, success=False)
+    client = OnrampClient(router=failover_setup, max_retries=0, stats=stats)
+    # degraded-but-serving beats serving nothing: chain runs anyway
+    assert client.generate("hello", role="judge").model_id == "mock-up"
+
+
+def test_exploration_routes_to_non_first_candidate(failover_setup, tmp_path):
+    import random
+
+    from onramp.stats import StatsStore
+
+    stats = StatsStore(tmp_path / "s.json")
+    client = OnrampClient(router=failover_setup, max_retries=0, stats=stats,
+                          explore_rate=1.0, rng=random.Random(7))
+    result = client.generate("hello", role="judge")
+    # with explore_rate=1.0 the only non-first candidate (mock-up) leads;
+    # (mock-down would have failed anyway, but no failure is recorded when
+    # exploration puts mock-up first)
+    assert result.model_id == "mock-up"
+    assert stats.get("mock-down")["calls"] == 0
+
+
+def test_outcomes_and_feedback_recorded(failover_setup, tmp_path):
+    from onramp.stats import StatsStore
+
+    stats = StatsStore(tmp_path / "s.json")
+    client = OnrampClient(router=failover_setup, max_retries=0, stats=stats)
+    result = client.generate("hello", role="judge")
+    assert stats.get("mock-down")["failures"] == 1   # failover recorded
+    assert stats.get("mock-up", "judge")["successes"] == 1
+    assert stats.get("mock-up")["cost_usd"] > 0
+    client.feedback(result, 0.85, role="judge")
+    assert abs(stats.mean_score("mock-up", "judge") - 0.85) < 1e-9

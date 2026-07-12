@@ -10,6 +10,7 @@ from .capabilities import CapabilityManifest, detect_drift
 from .client import AllCandidatesFailedError, OnrampClient
 from .registry import Registry, get_registry, register, unregister
 from .routing import NoEligibleModelError, RoleProfile, Router
+from .stats import StatsStore, get_stats
 
 __all__ = [
     "AdapterBase",
@@ -25,8 +26,10 @@ __all__ = [
     "Registry",
     "RoleProfile",
     "Router",
+    "StatsStore",
     "detect_drift",
     "get_registry",
+    "get_stats",
     "register",
     "unregister",
 ]

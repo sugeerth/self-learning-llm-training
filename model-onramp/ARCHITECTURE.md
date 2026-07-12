@@ -29,7 +29,29 @@ adapters ever names a model.
                  paths.py (all state under $ONRAMP_HOME, default ./.onramp)
                  discovery.py (zero-adapter onboarding from the Models API)
                  dashboard.py (live view + manifest feed, stdlib only)
+                 stats.py (live outcomes: breaker, exploration, feedback)
+                 autopilot.py (auto-promote/demote from live evidence)
 ```
+
+## The learning loop (Phase 6)
+
+```
+              serve                      record
+  Router ───────────────▶ OnrampClient ──────────▶ StatsStore
+    ▲   (stable-first,     (breaker · explore ·     (success/cost/latency
+    │    cheapest)          retry · failover)        per model × role,
+    │                                                + feedback() scores)
+    │                                                       │
+    └────────────────────── autopilot ◀─────────────────────┘
+         promote / demote      (min calls · success rate ·
+                                quality vs stable cohort)
+```
+
+Probes decide *eligibility*; live traffic decides *trust*. Exploration gives
+newcomers a small share of real traffic; autopilot promotes them when the
+evidence clears the bar, and demotes stable models whose live success rate
+collapses. The circuit breaker handles the transient version of the same
+problem (skip now, retry after cooldown).
 
 ## The onboarding flow
 

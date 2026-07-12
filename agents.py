@@ -31,10 +31,16 @@ CLAUDE_DEEP = "claude-opus-4-7"             # meta-judge + orchestrator (rare ca
 # capability router when probed manifests exist; the constants above remain
 # the fallback so nothing changes until models are onboarded.
 try:
-    from onramp_bridge import resolve_model
+    from onramp_bridge import record_outcome, record_quality, resolve_model
 except Exception:  # bridge or model-onramp absent — keep legacy behavior
     def resolve_model(role: str, default: str) -> str:
         return default
+
+    def record_outcome(*args, **kwargs) -> None:
+        pass
+
+    def record_quality(*args, **kwargs) -> None:
+        pass
 
 _client: Optional[Anthropic] = None
 
@@ -88,9 +94,11 @@ class BaseAgent:
     model: str = CLAUDE_FAST   # fallback when the on-ramp has no probed model
     role: str = ""             # onramp role profile; "" = always use `model`
     system: str = ""
+    last_model: str = ""       # model that served the most recent call
 
     def call(self, user_msg: str, max_tokens: int = 1024, thinking: bool = False) -> str:
         model = resolve_model(self.role, self.model) if self.role else self.model
+        self.last_model = model
         msgs = [{"role": "user", "content": user_msg}]
         sys = [{
             "type": "text",
@@ -109,7 +117,18 @@ class BaseAgent:
             kwargs["thinking"] = {"type": "adaptive"}
             kwargs["max_tokens"] = max_tokens + 2048
 
-        resp = client().messages.create(**kwargs)
+        t0 = time.time()
+        try:
+            resp = client().messages.create(**kwargs)
+        except Exception:
+            # live failure feeds the on-ramp's circuit breaker + autopilot
+            record_outcome(self.role, model, success=False,
+                           latency_s=time.time() - t0)
+            raise
+        record_outcome(self.role, model, success=True,
+                       input_tokens=resp.usage.input_tokens,
+                       output_tokens=resp.usage.output_tokens,
+                       latency_s=time.time() - t0)
 
         # extract text (skip thinking blocks)
         out = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
@@ -317,7 +336,20 @@ class OrchestratorAgent(BaseAgent):
             "verdict": asdict(verdict),
         })
 
+        # the judge's verdict on the evaluator's report doubles as a quality
+        # signal for whichever model served the evaluator (onramp autopilot
+        # reads these when deciding promotions)
+        if self.evaluator.last_model:
+            record_quality("evaluator", self.evaluator.last_model,
+                           verdict.confidence if verdict.accept
+                           else 1.0 - verdict.confidence)
+
         meta = self.meta.audit(self.judge_log, self.judge_log[-1])
+
+        # likewise, the meta-judge's audit scores the judge's model
+        if self.judge.last_model:
+            record_quality("judge", self.judge.last_model,
+                           1.0 if meta.judge_was_correct else 0.0)
 
         # escalate to human if meta-judge flags bias OR confidence is low
         if meta.bias_detected or verdict.confidence < 0.4:

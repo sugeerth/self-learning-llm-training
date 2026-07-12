@@ -1,6 +1,6 @@
 [project]
 name = "model-onramp"
-version = "0.2.0"
+version = "0.3.0"
 description = "Pluggable model-onboarding infrastructure: one-file adapters, empirical capability probes, capability-based routing with failover."
 requires-python = ">=3.10"
 dependencies = ["anthropic>=0.40"]

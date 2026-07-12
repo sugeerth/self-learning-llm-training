@@ -58,3 +58,41 @@ def resolve_model(role: str, default: str) -> str:
     except Exception:
         return default
     return candidates[0] if candidates else default
+
+
+def record_outcome(role: str, model_id: str, success: bool,
+                   input_tokens: int = 0, output_tokens: int = 0,
+                   latency_s: float = 0.0) -> None:
+    """Feed a live call outcome back to the on-ramp's stats store. Works
+    for legacy hard-coded models too (cost falls back to 0 when the model
+    has no registered adapter). Never raises."""
+    router = _get_router()
+    if router is None:
+        return
+    try:
+        from onramp.stats import get_stats
+
+        cost = 0.0
+        try:
+            adapter = router.registry.get(model_id)
+            cost = adapter.pricing.cost_usd(input_tokens, output_tokens)
+        except Exception:
+            pass
+        get_stats().record_call(model_id, role, success,
+                                cost_usd=cost, latency_s=latency_s)
+    except Exception:
+        pass
+
+
+def record_quality(role: str, model_id: str, score: float) -> None:
+    """Feed a quality judgment (0..1) about a model's output back to the
+    on-ramp — this is what autopilot's promotion logic reads. Never raises."""
+    router = _get_router()
+    if router is None:
+        return
+    try:
+        from onramp.stats import get_stats
+
+        get_stats().record_score(model_id, role, score)
+    except Exception:
+        pass

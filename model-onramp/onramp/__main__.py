@@ -6,6 +6,7 @@
   discover [--probe]         auto-register new models from the Anthropic
                              Models API (zero adapter files)
   promote/demote/retire <id> lifecycle: candidate <-> stable, or retire
+  autopilot [--apply]        promote/demote from live traffic evidence
   find --need k=v ...        capability query, best-ranked first
   roles                      show role profiles
   resolve <role>             pick the best model for a role
@@ -94,6 +95,10 @@ def main() -> None:
     disc.add_argument("--skip-context", action="store_true")
     for status_cmd in ("promote", "demote", "retire"):
         sub.add_parser(status_cmd).add_argument("model_id")
+    auto = sub.add_parser("autopilot")
+    auto.add_argument("--apply", action="store_true",
+                      help="execute the actions (default: dry-run)")
+    auto.add_argument("--min-calls", type=int, default=25)
     find = sub.add_parser("find")
     find.add_argument("--need", action="append", default=[],
                       metavar="KEY=VALUE", help="e.g. json_reliability=0.95")
@@ -146,6 +151,19 @@ def main() -> None:
         _set_status(args.model_id,
                     {"promote": "stable", "demote": "candidate",
                      "retire": "retired"}[args.command])
+    elif args.command == "autopilot":
+        from . import autopilot
+
+        actions = autopilot.evaluate(min_calls=args.min_calls)
+        if not actions:
+            print("autopilot: no lifecycle changes supported by the evidence")
+        for act in actions:
+            print(f"{act.action.upper():<8} {act.model_id}  ({act.reason})")
+        if actions and args.apply:
+            autopilot.apply(actions)
+            print(f"applied {len(actions)} action(s)")
+        elif actions:
+            print("dry-run — pass --apply to execute")
     elif args.command == "find":
         for model_id in registry.find(**_parse_need(args.need)):
             print(model_id)

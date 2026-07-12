@@ -64,7 +64,28 @@ it eligible for every agent role with no code changes in the loop.
 - [x] Manifest feed: `onramp export` publishes registry state as JSON.
 - [ ] Alert routing (Slack/email) on drift-workflow failure.
 
-## Phase 5 — Zero-touch onboarding ✅ (new)
+## Phase 6 — Self-learning routing ✅ (new)
+
+The router learns from production, not just probes:
+
+- [x] Live stats store (`onramp/stats.py`): every client call records
+      success/failure, cost, and latency per (model, role); consumers add
+      quality scores via `client.feedback()`. Laplace-smoothed rates.
+- [x] Circuit breaker: 3 consecutive live failures skip a model until a
+      cooldown passes (half-open retry after); if every candidate is
+      tripped, the chain serves anyway — degraded beats down.
+- [x] Bandit exploration: `explore_rate` share of traffic leads with a
+      non-first candidate so newcomers earn live evidence.
+- [x] Autopilot (`onramp autopilot [--apply]`): promotes candidates with
+      enough live calls, high success rate, quality at least matching the
+      stable cohort, and known pricing; demotes stable models whose live
+      success rate collapses. Every action is evidence-stamped.
+- [x] Closed loop with self-learning-llm-training: `BaseAgent.call()`
+      reports every outcome; the Judge's verdict scores the Evaluator's
+      model and the MetaJudge's audit scores the Judge's model — the
+      judging hierarchy literally trains the router.
+
+## Phase 5 — Zero-touch onboarding ✅
 
 - [x] `onramp discover [--probe]`: reads the live Anthropic Models API and
       auto-registers adapters for models not yet known — a brand-new model

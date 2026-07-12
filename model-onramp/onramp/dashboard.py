@@ -18,14 +18,17 @@ from pathlib import Path
 from . import events
 from .capabilities import CapabilityManifest, detect_drift
 from .registry import get_registry
+from .stats import get_stats
 
 
 def build_state(events_tail: int = 50) -> dict:
     """Everything a dashboard needs, as plain JSON-able data."""
     registry = get_registry()
+    stats = get_stats()
     models = []
     for model_id in registry.model_ids():
         manifest = registry.manifest(model_id)
+        live = stats.get(model_id)
         models.append({
             "model_id": model_id,
             "provider": getattr(registry.get(model_id), "provider", "?"),
@@ -33,6 +36,14 @@ def build_state(events_tail: int = 50) -> dict:
             "manifest": asdict(manifest) if manifest else None,
             "drift": detect_drift(model_id),
             "snapshots": len(CapabilityManifest.history(model_id)),
+            "live": {
+                "calls": live["calls"],
+                "success_rate": (round(live["successes"] / live["calls"], 3)
+                                 if live["calls"] else None),
+                "mean_score": stats.mean_score(model_id),
+                "cost_usd": round(live["cost_usd"], 6),
+                "breaker_open": stats.breaker_open(model_id),
+            },
         })
     return {"models": models, "events": events.tail(events_tail)}
 
@@ -61,7 +72,8 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <h1>model-onramp <span>— models are plugins, infrastructure is permanent</span></h1>
 <table id="models"><thead><tr>
  <th>model</th><th>status</th><th>json</th><th>instr</th><th>tools</th>
- <th>ctx</th><th>tok/s</th><th>$out/M</th><th>snaps</th><th>drift</th>
+ <th>ctx</th><th>tok/s</th><th>$out/M</th><th>snaps</th>
+ <th>live calls</th><th>live ok%</th><th>score</th><th>breaker</th><th>drift</th>
 </tr></thead><tbody></tbody></table>
 <h1>events</h1><div id="events"></div>
 <script>
@@ -71,11 +83,15 @@ async function refresh(){
     const mf = m.manifest||{};
     const st = m.probed ? (mf.status||'candidate') : 'unprobed';
     const f = v => v==null ? '—' : v;
+    const lv = m.live||{};
     return `<tr><td>${m.model_id}</td><td><span class="pill ${st}">${st}</span></td>
      <td>${f(mf.json_reliability)}</td><td>${f(mf.instruction_score)}</td>
      <td>${f(mf.tool_use_reliability)}</td><td>${f(mf.usable_context_tokens)}</td>
      <td>${f(mf.tokens_per_second)}</td><td>${f(mf.output_per_mtok)}</td>
-     <td>${m.snapshots}</td><td class="drift">${m.drift.join('<br>')||''}</td></tr>`;
+     <td>${m.snapshots}</td>
+     <td>${f(lv.calls)}</td><td>${f(lv.success_rate)}</td><td>${f(lv.mean_score)}</td>
+     <td>${lv.breaker_open ? '<span class="pill retired">OPEN</span>' : '—'}</td>
+     <td class="drift">${m.drift.join('<br>')||''}</td></tr>`;
   }).join('');
   document.getElementById('events').textContent =
     s.events.slice().reverse().map(e=>JSON.stringify(e)).join('\\n');
