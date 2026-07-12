@@ -1,0 +1,47 @@
+name: Scheduled re-probe + drift check
+
+# Phase 4: catch silent model updates (same id, new behavior). Re-probes
+# every registered model on a schedule and fails the run if any capability
+# drifted >10% since the previous snapshot. Requires ANTHROPIC_API_KEY as a
+# repo secret; the job skips gracefully when it's absent (e.g. forks).
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  reprobe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install anthropic
+      - name: Re-probe all models
+        if: ${{ env.ANTHROPIC_API_KEY != '' }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PYTHONPATH: .
+        run: |
+          python -m onramp probe --all --jobs 3 --budget 0.50 --skip-context
+          failed=0
+          for m in $(python - <<'EOF'
+          from onramp.registry import get_registry
+          print("\n".join(get_registry().model_ids()))
+          EOF
+          ); do
+            python -m onramp drift "$m" || failed=1
+          done
+          python -m onramp export --out manifest-feed.json
+          exit $failed
+      - name: Upload manifest feed
+        if: ${{ always() && env.ANTHROPIC_API_KEY != '' }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifest-feed
+          path: manifest-feed.json
+          if-no-files-found: ignore

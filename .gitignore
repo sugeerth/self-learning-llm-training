@@ -51,3 +51,6 @@ ray_results/
 dist/
 build/
 .next/
+
+# model-onramp runtime state (manifests, history, events)
+.onramp/

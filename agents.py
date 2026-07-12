@@ -27,6 +27,21 @@ CLAUDE_FAST = "claude-haiku-4-5-20251001"   # cheap, fast — trainer/evaluator
 CLAUDE_SMART = "claude-sonnet-4-6"          # judges
 CLAUDE_DEEP = "claude-opus-4-7"             # meta-judge + orchestrator (rare calls)
 
+# Phase 3 (model-onramp): agents resolve their model by ROLE through the
+# capability router when probed manifests exist; the constants above remain
+# the fallback so nothing changes until models are onboarded.
+try:
+    from onramp_bridge import record_outcome, record_quality, resolve_model
+except Exception:  # bridge or model-onramp absent — keep legacy behavior
+    def resolve_model(role: str, default: str) -> str:
+        return default
+
+    def record_outcome(*args, **kwargs) -> None:
+        pass
+
+    def record_quality(*args, **kwargs) -> None:
+        pass
+
 _client: Optional[Anthropic] = None
 
 
@@ -76,10 +91,14 @@ class MetaVerdict:
 class BaseAgent:
     """All agents share: cached system prompt + traced calls + structured output."""
     name: str = "base"
-    model: str = CLAUDE_FAST
+    model: str = CLAUDE_FAST   # fallback when the on-ramp has no probed model
+    role: str = ""             # onramp role profile; "" = always use `model`
     system: str = ""
+    last_model: str = ""       # model that served the most recent call
 
     def call(self, user_msg: str, max_tokens: int = 1024, thinking: bool = False) -> str:
+        model = resolve_model(self.role, self.model) if self.role else self.model
+        self.last_model = model
         msgs = [{"role": "user", "content": user_msg}]
         sys = [{
             "type": "text",
@@ -87,22 +106,35 @@ class BaseAgent:
             "cache_control": {"type": "ephemeral"},  # prompt caching — system is reused
         }]
         kwargs: dict[str, Any] = {
-            "model": self.model,
+            "model": model,
             "max_tokens": max_tokens,
             "system": sys,
             "messages": msgs,
         }
-        if thinking and self.model.startswith(("claude-opus", "claude-sonnet")):
-            kwargs["thinking"] = {"type": "enabled", "budget_tokens": 2048}
+        if thinking and model.startswith(("claude-opus", "claude-sonnet", "claude-fable")):
+            # adaptive is the only thinking mode on Opus 4.7+/Sonnet 5;
+            # budget_tokens is rejected there
+            kwargs["thinking"] = {"type": "adaptive"}
             kwargs["max_tokens"] = max_tokens + 2048
 
-        resp = client().messages.create(**kwargs)
+        t0 = time.time()
+        try:
+            resp = client().messages.create(**kwargs)
+        except Exception:
+            # live failure feeds the on-ramp's circuit breaker + autopilot
+            record_outcome(self.role, model, success=False,
+                           latency_s=time.time() - t0)
+            raise
+        record_outcome(self.role, model, success=True,
+                       input_tokens=resp.usage.input_tokens,
+                       output_tokens=resp.usage.output_tokens,
+                       latency_s=time.time() - t0)
 
         # extract text (skip thinking blocks)
         out = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
         log_event(
             agent=self.name,
-            model=self.model,
+            model=model,
             input_tokens=resp.usage.input_tokens,
             cache_read=getattr(resp.usage, "cache_read_input_tokens", 0),
             cache_write=getattr(resp.usage, "cache_creation_input_tokens", 0),
@@ -131,6 +163,7 @@ class BaseAgent:
 class TrainerAgent(BaseAgent):
     name = "trainer"
     model = CLAUDE_FAST
+    role = "trainer"
     system = """You are the TrainerAgent in a self-learning LLM training loop.
 You propose the next architecture configuration to try given prior sweep results.
 
@@ -165,6 +198,7 @@ near the current Pareto frontier (params vs val_ppl)."""
 class EvaluatorAgent(BaseAgent):
     name = "evaluator"
     model = CLAUDE_FAST
+    role = "evaluator"
     system = """You are the EvaluatorAgent. You score a trained tiny LLM's outputs.
 You receive: val_loss, val_ppl, cloze_accuracy, sample text.
 
@@ -191,6 +225,7 @@ Rate sample_quality on coherence + style fidelity to Shakespeare, NOT semantics
 class JudgeAgent(BaseAgent):
     name = "judge"
     model = CLAUDE_SMART
+    role = "judge"
     system = """You are the JudgeAgent. You audit the EvaluatorAgent's verdict and
 either ACCEPT or REJECT it. You are skeptical, not deferential.
 
@@ -221,6 +256,7 @@ Return JSON:
 class MetaJudgeAgent(BaseAgent):
     name = "meta_judge"
     model = CLAUDE_DEEP
+    role = "meta_judge"
     system = """You are the MetaJudgeAgent — the judge of judges. You audit the
 JudgeAgent's reasoning over time, looking for systematic bias:
 
@@ -272,6 +308,7 @@ class HumanJudgeAgent(BaseAgent):
 class OrchestratorAgent(BaseAgent):
     """Top-level loop. Owns the hierarchy and decides when to escalate to humans."""
     name = "orchestrator"
+    role = "orchestrator"
 
     def __init__(self) -> None:
         self.trainer = TrainerAgent()
@@ -299,7 +336,20 @@ class OrchestratorAgent(BaseAgent):
             "verdict": asdict(verdict),
         })
 
+        # the judge's verdict on the evaluator's report doubles as a quality
+        # signal for whichever model served the evaluator (onramp autopilot
+        # reads these when deciding promotions)
+        if self.evaluator.last_model:
+            record_quality("evaluator", self.evaluator.last_model,
+                           verdict.confidence if verdict.accept
+                           else 1.0 - verdict.confidence)
+
         meta = self.meta.audit(self.judge_log, self.judge_log[-1])
+
+        # likewise, the meta-judge's audit scores the judge's model
+        if self.judge.last_model:
+            record_quality("judge", self.judge.last_model,
+                           1.0 if meta.judge_was_correct else 0.0)
 
         # escalate to human if meta-judge flags bias OR confidence is low
         if meta.bias_detected or verdict.confidence < 0.4:
