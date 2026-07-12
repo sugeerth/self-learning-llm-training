@@ -44,14 +44,23 @@ def standard_brackets(max_steps: int = 200, eta: int = 2) -> list[Bracket]:
 class CheapPrior:
     """Not a real GP — RBF-kernel weighted average of prior runs.
     Self-improves: every new (config, ppl) pair is added to the support set.
+
+    Depth-aware (v2): evals carry the training depth (steps) they were
+    measured at as an extra feature, so EVERY rung eval can feed the prior —
+    a shallow eval of the same arch contributes, just with less weight than a
+    full-depth one. (v1 could only learn from ~2 full-depth evals per bracket
+    and starved; feeding it mixed depths without the feature would conflate
+    "bad arch" with "barely trained".)
     """
     def __init__(self, length_scale: float = 0.5):
+        self.support: list[tuple[dict, float, float]] = []   # (cfg, ppl, steps)
         self.X: list[np.ndarray] = []
         self.y: list[float] = []
         self.l = length_scale
+        self._max_steps = 1.0    # deepest eval seen; queries default to it
 
     @staticmethod
-    def featurize(cfg: dict) -> np.ndarray:
+    def featurize(cfg: dict, steps: float | None = None) -> np.ndarray:
         return np.array([
             math.log(cfg.get("n_layers", 6)),
             math.log(cfg.get("d_model", 384)),
@@ -59,17 +68,23 @@ class CheapPrior:
             math.log(max(cfg.get("n_kv_heads", 2), 1)),
             cfg.get("d_ff_mult", 8/3),
             float(cfg.get("tie_embeddings", True)),
+            math.log(max(steps or 1.0, 1.0)) / 2,   # /2: depth informs, not dominates
         ], dtype=float)
 
-    def add(self, cfg: dict, val_ppl: float) -> None:
-        self.X.append(self.featurize(cfg))
+    def add(self, cfg: dict, val_ppl: float, steps: float | None = None) -> None:
+        cfg = {k: v for k, v in cfg.items() if not k.startswith("_")}
+        steps = float(steps) if steps else self._max_steps
+        self._max_steps = max(self._max_steps, steps)
+        self.support.append((cfg, float(val_ppl), steps))
+        self.X.append(self.featurize(cfg, steps))
         self.y.append(math.log(val_ppl))  # log-space — ppl is heavy-tailed
 
-    def predict(self, cfg: dict) -> tuple[float, float]:
-        """Return (mean log-ppl, uncertainty)."""
+    def predict(self, cfg: dict, steps: float | None = None) -> tuple[float, float]:
+        """Return (mean log-ppl, uncertainty) at `steps` depth (default: the
+        deepest depth seen — 'how good would this arch be fully trained')."""
         if not self.X:
             return (5.0, 1.0)
-        x = self.featurize(cfg)
+        x = self.featurize(cfg, steps or self._max_steps)
         Xa = np.stack(self.X)
         d2 = ((Xa - x) ** 2).sum(axis=1)
         w = np.exp(-d2 / (2 * self.l ** 2))
@@ -86,29 +101,32 @@ class CheapPrior:
         return mean - kappa * unc
 
     # ── persistence: the prior starves inside one run; let it compound ──
+    # Raw (cfg, ppl, steps) triples are stored, not feature vectors, so the
+    # featurization can evolve without invalidating accumulated knowledge.
 
     def save(self, path: str = "prior_store.json") -> None:
         with open(path, "w") as f:
-            json.dump({"length_scale": self.l,
-                       "X": [x.tolist() for x in self.X], "y": self.y}, f)
+            json.dump({"version": 2, "length_scale": self.l,
+                       "support": [{"cfg": c, "ppl": p, "steps": s}
+                                   for c, p, s in self.support]}, f)
 
     @classmethod
     def load(cls, path: str = "prior_store.json") -> "CheapPrior":
-        """Missing/corrupt file -> empty prior (never raises)."""
+        """Missing/corrupt/old-format file -> empty prior (never raises)."""
         p = cls()
         try:
             with open(path) as f:
                 d = json.load(f)
             p.l = d.get("length_scale", p.l)
-            p.X = [np.asarray(x, dtype=float) for x in d.get("X", [])]
-            p.y = [float(v) for v in d.get("y", [])]
+            for row in d.get("support", []):
+                p.add(row["cfg"], row["ppl"], row.get("steps"))
         except (FileNotFoundError, json.JSONDecodeError, KeyError, TypeError):
             pass
         return p
 
     def extend(self, other: "CheapPrior") -> None:
-        self.X.extend(other.X)
-        self.y.extend(other.y)
+        for cfg, ppl, steps in other.support:
+            self.add(cfg, ppl, steps)
 
 
 # ── successive-halving runner ──────────────────────────────────────────

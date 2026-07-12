@@ -106,15 +106,15 @@ def run_bracketed(seed: int, budget: int, bracket: Bracket,
     prior = None
     if use_prior:
         prior = CheapPrior.load(warm_prior_path) if warm_prior_path else CheapPrior()
-    final_depth = bracket.initial_steps * bracket.eta ** bracket.halvings
     history: list[dict] = []
 
     def on_eval(cfg, ev, delta):
         traj.record(ev, delta)
-        if prior is not None and ev["trained_steps"] >= final_depth:
-            # only full-depth evals feed the prior — low-depth ppl is a
-            # different (noisier) quantity than what we're predicting
-            prior.add(cfg, ev["val_ppl"])
+        if prior is not None:
+            # depth-aware prior: every rung eval contributes, weighted by how
+            # close its training depth is to the full-depth query (v1 starved
+            # on ~2 full-depth evals per bracket)
+            prior.add(cfg, ev["val_ppl"], steps=ev["trained_steps"])
 
     b = 0
     while budget - traj.spent >= _bracket_cost(bracket):
