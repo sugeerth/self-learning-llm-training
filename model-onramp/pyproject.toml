@@ -1,0 +1,13 @@
+[project]
+name = "model-onramp"
+version = "0.1.0"
+description = "Pluggable model-onboarding infrastructure: one-file adapters, empirical capability probes, capability-based routing."
+requires-python = ">=3.10"
+dependencies = ["anthropic>=0.40"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["onramp*"]
