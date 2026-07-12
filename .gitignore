@@ -34,6 +34,11 @@ checkpoints/
 # Large files (>50MB) — excluded explicitly
 ckpt.pt
 
+# Harness artifacts (machine-specific tuning + local runs)
+runs/
+harness_profile.json
+bench_harness.json
+
 # Experiment tracking / logs
 wandb/
 ray_results/

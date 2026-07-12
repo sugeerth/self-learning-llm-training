@@ -37,13 +37,30 @@ def prepare() -> tuple[str, str]:
     if not (os.path.exists(train_bin) and os.path.exists(val_bin)):
         with open(txt_path, "r", encoding="utf-8") as f:
             text = f.read()
-        enc = tiktoken.get_encoding("gpt2")
+        enc = tokenizer()
         ids = np.array(enc.encode_ordinary(text), dtype=np.uint16)
         n = int(0.9 * len(ids))
         ids[:n].tofile(train_bin)
         ids[n:].tofile(val_bin)
         print(f"Tokens: train={n:,} val={len(ids) - n:,}")
     return train_bin, val_bin
+
+
+class ByteTokenizer:
+    """Offline fallback: raw UTF-8 bytes as tokens (0..255).
+
+    tiktoken fetches the GPT-2 BPE files from the network on first use; on an
+    air-gapped or proxy-restricted machine that fails. Byte-level tokens keep
+    every training/eval path runnable (model vocab stays padded at 50304)."""
+    n_vocab = 256
+
+    def encode(self, s: str) -> list[int]:
+        return list(s.encode("utf-8"))
+
+    encode_ordinary = encode
+
+    def decode(self, ids) -> str:
+        return bytes(int(i) % 256 for i in ids).decode("utf-8", errors="replace")
 
 
 class Loader:
@@ -62,4 +79,8 @@ class Loader:
 
 
 def tokenizer():
-    return tiktoken.get_encoding("gpt2")
+    try:
+        return tiktoken.get_encoding("gpt2")
+    except Exception as e:
+        print(f"data: tiktoken vocab fetch failed ({type(e).__name__}) — using byte-level fallback")
+        return ByteTokenizer()

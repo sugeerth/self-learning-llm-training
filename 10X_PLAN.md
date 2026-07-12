@@ -45,6 +45,12 @@ degrades) eval on at least one task.
 
 ## Pillar 2 — 10x experiment throughput (the scale 10x)
 
+> **Status: first slice shipped.** `harness.py` implements 2.1–2.2 below plus a
+> self-tuning profile (`harness.py tune`) and a proof benchmark (`harness.py bench`):
+> 2.1–2.3x measured on a 4-core container against the tuner's own 1.63x
+> parallel-efficiency ceiling; scales with cores/GPUs. Use via
+> `self_learning_runner.py --harness`.
+
 Self-learning compounds with iterations. The bottleneck is that candidates train serially,
 from scratch, on CPU/MPS.
 
