@@ -17,7 +17,7 @@ jobs:
           cache: pip
       - name: Install test deps (torch CPU for the arms-logic tests)
         run: |
-          pip install numpy pytest
+          pip install numpy pytest tiktoken
           pip install torch --index-url https://download.pytorch.org/whl/cpu
       - name: Run tests
-        run: pytest tests/ -q
+        run: python -m pytest tests/ -q
