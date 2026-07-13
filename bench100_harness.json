@@ -1,25 +1,39 @@
 {
-  "t_base_s": 94.2,
-  "t_cold_s": 47.1,
-  "t_warm_s": 0.001,
-  "cold_speedup": 2.0,
-  "warm_sweep_speedup": 67209.9,
+  "t_base_s": 93.6,
+  "t_cold_s": 17.3,
+  "t_warm_s": 0.002,
+  "cold_speedup": 5.41,
+  "warm_sweep_speedup": 50517.6,
   "campaign_speedup": {
-    "1": 2.0,
-    "3": 6.0,
-    "10": 20.0,
-    "50": 99.8
+    "1": 5.4,
+    "3": 16.2,
+    "10": 54.0,
+    "50": 269.0
   },
-  "campaign_limit": 67209.9,
+  "campaign_limit": 50517.6,
   "kill": {
     "lr": 0.05,
     "killed": 2,
     "of": 4,
-    "steps_refunded_pct": 36.7
+    "steps_refunded_pct": 31.7
   },
+  "numerics_guard": {
+    "fp32_ppl": 26.4,
+    "bf16_ppl": 26.4,
+    "delta_pct": 0.0
+  },
+  "engine_levers": [
+    "parallel",
+    "promote",
+    "kill",
+    "dedupe",
+    "auto_vocab",
+    "bf16_amp"
+  ],
   "cache_entries": 7,
-  "baseline_best_ppl": 324.14,
-  "cold_best_ppl": 300.9,
+  "baseline_best_ppl": 329.18,
+  "cold_best_ppl": 17.27,
+  "ppl_note": "baseline ppl uses the full 50304-way softmax; the harness clamps dead vocab rows, so cross-engine ppl is not directly comparable (rankings are)",
   "profile": {
     "workers": 4,
     "threads_per_worker": 1,

@@ -80,3 +80,32 @@ The levers:
 Honesty note: a single cold sweep is bounded by cores (2.0x here); the 100x is
 *effective* throughput on repeated/overlapping campaigns — exactly the arms /
 regression-sweep / re-run-after-crash workloads this repo actually runs.
+
+### Round 2: cold-sweep 10x levers (D: vocab clamp, E: bf16 autocast)
+
+The cold sweep was core-bound at 2.0x. Two per-step levers fixed that
+(`bench100` re-run, same bracket/seeds/machine):
+
+- **D. Effective-vocab clamp**: the byte-level corpus contains ~123 distinct
+  token ids, but configs allocated a 50,304-row embedding + output head — the
+  dead-logit matmul+softmax dominated CPU step time. `effective_vocab()` scans
+  the data and clamps candidates to the smallest covering 64-multiple (128
+  here). Measured **4.8x per step** at d_model 512. Lossless for the task;
+  ppl scale changes (smaller softmax denominator), so cross-engine ppl isn't
+  comparable — rankings are, and all arms share one scale.
+- **E. bf16 autocast (CPU)**: measured **1.66x per step**, and the numerics
+  guard shows **0.0% val-ppl delta** vs fp32 on an identical seeded run
+  (validation always runs fp32).
+
+| Measurement | Round 1 | Round 2 |
+|---|---|---|
+| Cold harness sweep (vs 93.6-94.2s baseline) | 47.1s (2.0x) | **17.3s (5.4x)** |
+| Campaign of 10 sweeps | 20.0x | **54.0x** |
+| Campaign of 50 sweeps | 99.8x | **269x** |
+| Sweeps to reach 100x | 50 | **~19** |
+| bf16 numerics guard | — | 0.0% delta |
+
+Both levers are default-on in `parallel_halving` (opt out: `auto_vocab=False`,
+`amp=False`) and keyed into the eval cache, so fp32/amp and clamped/unclamped
+results never collide. Historical arms JSONs predate the ppl-scale change —
+re-baseline before comparing.
