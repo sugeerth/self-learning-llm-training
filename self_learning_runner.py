@@ -33,8 +33,9 @@ from model import LLM, ModelConfig
 
 def train_partial(cfg: dict, steps: int, lr: float = 3e-4) -> dict:
     """Train a fresh model for `steps` mini-batches and return eval dict."""
+    from harness import _clean  # strips _eval/_steps added by earlier rungs
     device = "mps" if torch.backends.mps.is_available() else "cpu"
-    mc = ModelConfig(**cfg)
+    mc = ModelConfig(**_clean(cfg))
     model = LLM(mc).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=lr, betas=(0.9, 0.95))
 
@@ -101,13 +102,22 @@ def main():
     ap.add_argument("--max-steps", type=int, default=100, help="steps for top survivor")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--reset", action="store_true", help="clear local state first")
+    ap.add_argument("--harness", action="store_true",
+                    help="use the tuned throughput harness (parallel workers + "
+                         "checkpoint promotion); auto-tunes on first use")
     args = ap.parse_args()
+
+    harness_profile = None
+    if args.harness:
+        from harness import load_or_tune
+        harness_profile = load_or_tune(quick=True)
 
     rng = random.Random(args.seed)
     if args.reset:
         reset_state()
 
     prior = load_prior_from_experiments("experiments.json")
+    prior.extend(CheapPrior.load("prior_store.json"))   # compound across runs
     orchestrator = OrchestratorAgent()
     history: list[dict] = []
     bracket = Bracket(n_candidates=4, halvings=2, initial_steps=max(1, args.max_steps // 4))
@@ -144,7 +154,11 @@ def main():
         # ── hyperband bracket
         snapshot["current"] = {"round": r + 1, "phase": "training"}
         write_snapshot(snapshot)
-        survivors = successive_halving(candidates, train_partial, bracket)
+        if harness_profile is not None:
+            from harness import parallel_halving
+            survivors = parallel_halving(candidates, bracket, profile=harness_profile)
+        else:
+            survivors = successive_halving(candidates, train_partial, bracket)
         winner = survivors[0]
 
         # ── multi-agent eval/judge/meta on the winner
@@ -164,6 +178,7 @@ def main():
         # ── update prior with all candidates (not just winner) — more learning per round
         for c in survivors:
             prior.add(c, c["_eval"]["val_ppl"])
+        prior.save("prior_store.json")   # future runs start from this knowledge
         history.append({
             "name": f"round{r+1}-winner",
             "config": winner,

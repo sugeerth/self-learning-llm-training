@@ -1,0 +1,53 @@
+# 10x Plan
+
+**The one thing that matters:** prove the loop actually learns. Today Claude agents steer a
+Hyperband sweep — but until agent-guided search *measurably beats random search*, the agents
+are commentary, not a control system. Everything here serves that one claim.
+
+## What we learned so far
+
+- **Throughput is solved enough.** `harness.py` (parallel rungs + checkpoint promotion +
+  self-tuning) gives 2.1–2.3x on 4 CPU cores — near that box's measured 1.63x parallel
+  ceiling; it scales with cores/GPUs. Run via `self_learning_runner.py --harness`.
+- **Hyperband's edge is budget-dependent.** At 96-step budgets it ends 25% better than
+  random (ppl 159 vs 213); at 192 steps the gap narrows to noise (18.9 vs 19.6 mean final,
+  0.67x paired steps-to-target) — random search with full-depth evals is a strong anytime
+  baseline at this scale.
+- **Depth-aware features fixed the prior.** v1 (full-depth evals only) starved and warm-
+  starting it was pathological: one seed burned half its budget at ppl 245. v2 attaches
+  training depth as a feature so every rung eval contributes; re-run on the same
+  seeds/budget: 0/3 reached → **3/3 reached at 1.75x**, and the best half-budget quality
+  of any arm (20.8 vs hyperband's 22.9, random's 28.8). Measure → fix → re-measure works.
+- **Iterated self-training collapse is driven by the GROWING synthetic share.**
+  Accumulate mode drifted +0.62% → +0.89% → +1.15% (compounding). Replace mode (constant
+  10% share) + a self-perplexity gate: +0.69% → +0.67% → **+0.49%** — flat, a small
+  constant tax instead of compounding decay. Constant-share self-training is stable;
+  single-shot mixing remains neutral (mix@5% −0.24%, mix@18% +0.06%).
+- **The agent arm is untested.** `arms.py` supports it but needs an `ANTHROPIC_API_KEY`.
+  The core thesis of the repo has not yet been measured.
+- **Measure carefully or be fooled.** Two real bugs found only because we benchmarked:
+  a tuner optimizing tokens/sec *lost* 0.62x (the budget currency is steps), and a pooled
+  regret target let random "fail" against itself (now paired per seed).
+
+## What to do, in order
+
+1. **Run the agent arm** (`arms.py`, with a key, ≥3 seeds, ≥256-step budget). This is the
+   yes/no on the whole premise. If it doesn't beat random ≥2x, fix the Trainer prompt/loop
+   before building anything else. *(Still blocked on an `ANTHROPIC_API_KEY`.)*
+2. ~~Persist the prior across runs.~~ **Done, then fixed** — depth-aware `CheapPrior` v2
+   (every eval contributes, weighted by depth); persistence stores raw triples; the runner
+   compounds into `prior_store.json`; `arms.py run --warm-prior PATH`. Re-measured: 1.75x,
+   best anytime curve.
+3. ~~Wire in the flywheel.~~ **Done, collapse lever found** — `flywheel.py run` (single-shot
+   A/B) and `flywheel.py generations --mode accumulate|replace [--ppl-gate]` (iterated).
+   Replace mode + ppl gate flattens the collapse curve (+1.15% → +0.49% at G3).
+4. **Feed human-queue decisions back** into the Judge prompt; track Judge–human agreement
+   over time.
+
+**Success bar:** agent arm reaches random's final quality in ≥2x fewer steps, reproducibly
+across 5 seeds; flywheel mixing improves eval instead of degrading it.
+
+## Not doing
+
+SaaS/deployment, frontier scale, new agent roles — not until the five existing agents have
+measured value.
