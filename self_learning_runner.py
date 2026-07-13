@@ -155,8 +155,11 @@ def main():
         snapshot["current"] = {"round": r + 1, "phase": "training"}
         write_snapshot(snapshot)
         if harness_profile is not None:
-            from harness import parallel_halving
-            survivors = parallel_halving(candidates, bracket, profile=harness_profile)
+            from harness import EvalCache, parallel_halving
+            # cache: repeat configs across rounds cost zero; kill: diverging
+            # candidates stop billing the bracket the moment they're doomed
+            survivors = parallel_halving(candidates, bracket, profile=harness_profile,
+                                         cache=EvalCache(), kill_factor=2.5)
         else:
             survivors = successive_halving(candidates, train_partial, bracket)
         winner = survivors[0]

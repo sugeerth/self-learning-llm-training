@@ -135,6 +135,10 @@ def run_bracketed(seed: int, budget: int, bracket: Bracket,
             run_dir=os.path.join(RUNS_DIR, f"arms-{seed}-{b}"),
             val_batches_rung=VAL_BATCHES, val_batches_final=VAL_BATCHES,
             want_sample=False, deterministic_val=True, on_eval=on_eval,
+            # kill refunds billed budget via on_eval's steps_saved accounting;
+            # the eval cache stays OFF here so every arm pays full cost and
+            # paired-budget comparisons remain honest
+            kill_factor=2.5,
         )
         w = survivors[0]
         history.append({"name": f"b{b}-winner", "config": _pub(w),
