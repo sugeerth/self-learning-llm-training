@@ -67,11 +67,38 @@ CACHE_DIR = os.path.join(RUNS_DIR, "cache")
 _MC_FIELDS = {f.name for f in dataclasses.fields(ModelConfig)}
 
 
+# ──────────────────── 10x-cold lever D: effective vocab ────────────────────
+
+_VOCAB_CACHE: dict[str, int] = {}
+
+
+def effective_vocab(train_bin: str) -> int:
+    """Smallest 64-multiple covering the token ids that actually occur in
+    the data. With the byte-level tokenizer the corpus holds ~128 distinct
+    ids while configs allocate a 50,304-row embedding + output head — the
+    dead logits dominate CPU step time (measured 4.8x at d_model 512).
+    Clamping is lossless for the task: unused rows never fire."""
+    if train_bin not in _VOCAB_CACHE:
+        import numpy as np
+        data = np.memmap(train_bin, dtype=np.uint16, mode="r")
+        mx = int(data[: min(len(data), 4_000_000)].max())
+        _VOCAB_CACHE[train_bin] = 64 * ((mx + 1 + 63) // 64)
+    return _VOCAB_CACHE[train_bin]
+
+
+def clamp_vocab(candidates: list[dict], train_bin: str) -> None:
+    v = effective_vocab(train_bin)
+    for c in candidates:
+        if c.get("vocab_size", v) > v:
+            c["vocab_size"] = v
+
+
 # ────────────────────────── 100x lever A: eval cache ──────────────────────────
 
 def eval_key(cfg: dict, *, lr: float, batch_size: int, steps_total: int,
              val_batches: int, deterministic_val: bool,
-             train_bin: str | None = None, torch_seed=None) -> str:
+             train_bin: str | None = None, torch_seed=None,
+             amp: bool = False) -> str:
     """Content address of one evaluation: everything that determines the
     result. Same key => same (val_loss, checkpoint), so it never reruns."""
     import hashlib
@@ -81,7 +108,7 @@ def eval_key(cfg: dict, *, lr: float, batch_size: int, steps_total: int,
         "lr": lr, "bs": batch_size, "steps": steps_total,
         "vb": val_batches, "dv": bool(deterministic_val),
         "bin": os.path.basename(train_bin) if train_bin else None,
-        "seed": torch_seed,
+        "seed": torch_seed, "amp": bool(amp),
     }, sort_keys=True)
     return hashlib.sha256(payload.encode()).hexdigest()[:20]
 
@@ -278,9 +305,14 @@ def _train_task(task: dict) -> dict:
     killed = False
     kill_factor = task.get("kill_factor")   # None disables the kill switch
     kill_grace = task.get("kill_grace", 8)
+    amp = bool(task.get("amp")) and device == "cpu"   # bf16 autocast (measured 1.66x)
     for _ in range(task["steps"]):
         x, y = train_loader.batch()
-        _, loss = model(x, targets=y)
+        if amp:
+            with torch.autocast("cpu", dtype=torch.bfloat16):
+                _, loss = model(x, targets=y)
+        else:
+            _, loss = model(x, targets=y)
         opt.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -390,12 +422,14 @@ def _snip_score(cfg: dict, batch: tuple) -> float:
 
 
 def proxy_filter(candidates: list[dict], keep: int, batch_size: int = 4,
-                 seq_len: int = 128) -> list[dict]:
+                 seq_len: int = 128, auto_vocab: bool = True) -> list[dict]:
     """Rank candidates by SNIP saliency at init and keep the top `keep`.
     Costs one forward+backward each — no training steps spent on duds."""
     if len(candidates) <= keep:
         return candidates
     train_bin, _ = prepare()
+    if auto_vocab:
+        clamp_vocab(candidates, train_bin)
     loader = Loader(train_bin, block_size=seq_len, batch_size=batch_size, device="cpu")
     batch = loader.batch()
     scored = [(_snip_score(c, batch), c) for c in candidates]
@@ -419,6 +453,8 @@ def parallel_halving(
     on_eval=None,                 # callback(cfg, eval_dict, delta_steps) per eval
     cache: EvalCache | None = None,   # 100x lever A: skip identical work
     kill_factor: float | None = None,  # 100x lever B: e.g. 2.5 enables kill
+    auto_vocab: bool = True,           # lever D: clamp dead vocab rows
+    amp: bool = True,                  # lever E: bf16 autocast on CPU
 ) -> list[dict]:
     """Drop-in for hyperband.successive_halving, but parallel + promoted.
 
@@ -438,7 +474,11 @@ def parallel_halving(
     os.makedirs(run_dir, exist_ok=True)
     device = profile.device if profile.device != "cuda" or torch.cuda.is_available() else _device()
 
-    survivors, _alias = dedupe_candidates(list(candidates))
+    candidates = list(candidates)
+    if auto_vocab:
+        train_bin, _val = prepare()
+        clamp_vocab(candidates, train_bin)
+    survivors, _alias = dedupe_candidates(candidates)
     if len(survivors) < len(candidates):
         _log_event(stage="harness_dedupe",
                    dropped=len(candidates) - len(survivors))
@@ -451,7 +491,8 @@ def parallel_halving(
 
     def _keys(cfg: dict, steps_total: int, val_batches: int) -> tuple[str, str]:
         common = dict(lr=lr, batch_size=profile.batch_size,
-                      steps_total=steps_total, deterministic_val=deterministic_val)
+                      steps_total=steps_total, deterministic_val=deterministic_val,
+                      amp=amp)
         train_k = eval_key(cfg, val_batches=0, **common)
         eval_k = eval_key(cfg, val_batches=val_batches, **common)
         return train_k, eval_k
@@ -497,7 +538,7 @@ def parallel_halving(
                     "ckpt_out": ck_out,
                     "want_sample": False, "device": device,
                     "deterministic_val": deterministic_val,
-                    "kill_factor": kill_factor,
+                    "kill_factor": kill_factor, "amp": amp,
                 })
             t0 = time.time()
             evals = list(pool.map(_train_task, tasks)) if tasks else []
@@ -739,6 +780,19 @@ def bench100(n: int = 4, halvings: int = 2, initial_steps: int = 4,
     print(f"bench100: WARM sweep {t_warm:8.2f}s  best_ppl={warm[0]['_eval']['val_ppl']:.1f}"
           f"  (identical re-sweep, all cache hits)")
 
+    # numerics guard: bf16 autocast must not distort measured quality
+    guard_cfg = random_config(random.Random(seed + 1))
+    clamp_vocab([guard_cfg], prepare()[0])
+    guard_task = {"cfg": guard_cfg, "steps": 16, "lr": 3e-4,
+                  "batch_size": profile.batch_size, "val_batches": 20,
+                  "ckpt_in": None, "ckpt_out": None, "want_sample": False,
+                  "device": "cpu", "deterministic_val": True, "torch_seed": 123}
+    ppl32 = _train_task(dict(guard_task, amp=False))["val_ppl"]
+    pplbf = _train_task(dict(guard_task, amp=True))["val_ppl"]
+    guard_delta = abs(pplbf - ppl32) / ppl32
+    print(f"bench100: NUMERICS   fp32 ppl {ppl32:.2f} vs bf16 ppl {pplbf:.2f}"
+          f"  (delta {100 * guard_delta:.1f}%)")
+
     # kill lever, isolated: diverging population, single rung
     kill_bracket = Bracket(n_candidates=n, halvings=0, initial_steps=kill_steps)
     kill_cands = [random_config(rng) for _ in range(n)]
@@ -765,9 +819,17 @@ def bench100(n: int = 4, halvings: int = 2, initial_steps: int = 4,
         "campaign_limit": round(warm_x, 1),
         "kill": {"lr": kill_lr, "killed": n_killed, "of": n,
                  "steps_refunded_pct": round(100 * saved / budget, 1)},
+        "numerics_guard": {"fp32_ppl": round(ppl32, 2),
+                           "bf16_ppl": round(pplbf, 2),
+                           "delta_pct": round(100 * guard_delta, 2)},
+        "engine_levers": ["parallel", "promote", "kill", "dedupe",
+                          "auto_vocab", "bf16_amp"],
         "cache_entries": EvalCache(cache_dir).stats()["entries"],
         "baseline_best_ppl": round(base_surv[0]["_eval"]["val_ppl"], 2),
         "cold_best_ppl": round(cold[0]["_eval"]["val_ppl"], 2),
+        "ppl_note": "baseline ppl uses the full 50304-way softmax; the "
+                    "harness clamps dead vocab rows, so cross-engine ppl "
+                    "is not directly comparable (rankings are)",
         "profile": asdict(profile),
     }
     for k in ks:

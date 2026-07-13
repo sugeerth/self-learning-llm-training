@@ -101,3 +101,27 @@ def test_dedupe_ignores_bookkeeping_keys():
     a = _cfg()
     reps, _ = dedupe_candidates([a, {**a, "_cid": 9, "_steps": 4}])
     assert len(reps) == 1
+
+
+# ── effective vocab / clamp ─────────────────────────────────────────────
+
+def test_effective_vocab_rounds_to_64(tmp_path):
+    import numpy as np
+
+    from harness import _VOCAB_CACHE, clamp_vocab, effective_vocab
+
+    bin_path = str(tmp_path / "toy.bin")
+    np.array([0, 5, 122, 7], dtype=np.uint16).tofile(bin_path)
+    _VOCAB_CACHE.pop(bin_path, None)
+    assert effective_vocab(bin_path) == 128            # 64*ceil(123/64)
+
+    cands = [_cfg(), {**_cfg(), "vocab_size": 64}]
+    clamp_vocab(cands, bin_path)
+    assert cands[0]["vocab_size"] == 128               # 50304 clamped down
+    assert cands[1]["vocab_size"] == 64                # never clamped UP
+
+
+def test_eval_key_sensitive_to_amp():
+    base = dict(lr=3e-4, batch_size=8, steps_total=16, val_batches=8,
+                deterministic_val=True)
+    assert eval_key(_cfg(), **base) != eval_key(_cfg(), amp=True, **base)
