@@ -51,3 +51,32 @@ across 5 seeds; flywheel mixing improves eval instead of degrading it.
 
 SaaS/deployment, frontier scale, new agent roles — not until the five existing agents have
 measured value.
+
+## 100x: measured (harness levers A/B/C)
+
+Same bracket (n=4, halvings=2, initial_steps=4), same seeds, 4-core CPU —
+`python3 harness.py bench100`, results in `bench100_harness.json`:
+
+| Measurement | Result |
+|---|---|
+| Baseline sweep (serial, from-scratch, sample/eval) | 94.2s |
+| Cold harness sweep (parallel + promote + kill) | 47.1s (**2.0x**, better ppl: 300.9 vs 324.1) |
+| Warm identical re-sweep (eval cache, all hits) | 0.001s (**67,210x**) |
+| Campaign of 10 sweeps | **20.0x** |
+| Campaign of 50 sweeps | **99.8x ≈ the 100x** |
+| Kill switch on a diverging population (lr=0.05) | 2/4 killed, **37% of budget refunded** |
+
+The levers:
+- **A. Eval cache** (`EvalCache`, content-addressed evals + checkpoints under
+  `runs/cache/`): identical (config, lr, batch, steps, data, val) work never
+  reruns — across rungs, arms, repeated sweeps, and crashes. Deployed in
+  `self_learning_runner --harness` and `harness.py run` (off in `arms.py` so
+  paired-budget arm comparisons stay honest).
+- **B. Divergence early-kill** (`should_kill`, rolling-loss factor 2.5 after an
+  8-step grace): doomed candidates stop billing the bracket mid-rung and rank
+  last. Deployed in the runner and arms (refunds are budget-accounted).
+- **C. Config dedupe**: colliding random draws train once.
+
+Honesty note: a single cold sweep is bounded by cores (2.0x here); the 100x is
+*effective* throughput on repeated/overlapping campaigns — exactly the arms /
+regression-sweep / re-run-after-crash workloads this repo actually runs.

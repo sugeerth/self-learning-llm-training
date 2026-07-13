@@ -1,5 +1,22 @@
 """Throughput harness — the execution engine under the self-learning loop.
 
+100x levers (all measured by `harness.py bench100`):
+
+A. **Eval cache** — every (config, lr, batch, seed, data, steps) evaluation is
+   content-addressed and persisted with its checkpoint. Identical work never
+   runs twice: not across rungs, not across arms, not across repeated sweeps,
+   not across crashes. A warm re-sweep costs seconds instead of the full
+   bracket. This is the dominant lever for arms-style campaigns, which
+   deliberately re-run identical configs under identical seeds.
+
+B. **Divergence early-kill** — a candidate whose loss is NaN/inf or blows past
+   `kill_factor x` its best rolling loss after a grace window stops training
+   immediately and is ranked last. Doomed configs stop billing the budget the
+   moment they're provably doomed.
+
+C. **Config dedupe** — random search draws collide; identical configs in a
+   rung train once and share the result.
+
 Two 10x levers, both aimed at the harness rather than the model:
 
 1. **Execution 10x** — the same successive-halving semantics as
@@ -46,7 +63,114 @@ from model import LLM, ModelConfig
 
 PROFILE_PATH = os.path.join(os.path.dirname(__file__), "harness_profile.json")
 RUNS_DIR = os.path.join(os.path.dirname(__file__), "runs")
+CACHE_DIR = os.path.join(RUNS_DIR, "cache")
 _MC_FIELDS = {f.name for f in dataclasses.fields(ModelConfig)}
+
+
+# ────────────────────────── 100x lever A: eval cache ──────────────────────────
+
+def eval_key(cfg: dict, *, lr: float, batch_size: int, steps_total: int,
+             val_batches: int, deterministic_val: bool,
+             train_bin: str | None = None, torch_seed=None) -> str:
+    """Content address of one evaluation: everything that determines the
+    result. Same key => same (val_loss, checkpoint), so it never reruns."""
+    import hashlib
+
+    payload = json.dumps({
+        "cfg": {k: cfg[k] for k in sorted(cfg) if k in _MC_FIELDS},
+        "lr": lr, "bs": batch_size, "steps": steps_total,
+        "vb": val_batches, "dv": bool(deterministic_val),
+        "bin": os.path.basename(train_bin) if train_bin else None,
+        "seed": torch_seed,
+    }, sort_keys=True)
+    return hashlib.sha256(payload.encode()).hexdigest()[:20]
+
+
+class EvalCache:
+    """Persistent (eval dict + checkpoint) store, keyed by eval_key.
+
+    Hits skip training entirely; partial hits (same lineage, fewer steps)
+    provide the warm checkpoint that promotion resumes from — across runs,
+    across arms, across process restarts."""
+
+    def __init__(self, root: str = CACHE_DIR):
+        self.root = root
+        self.index_path = os.path.join(root, "index.json")
+        os.makedirs(root, exist_ok=True)
+        try:
+            with open(self.index_path) as f:
+                self.index = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            self.index = {}
+
+    def ckpt_path(self, key: str) -> str:
+        return os.path.join(self.root, f"{key}.pt")
+
+    def get(self, key: str) -> dict | None:
+        """Return {'eval': ..., 'ckpt': train_key|None} or None on miss.
+        An entry whose checkpoint file was evicted counts as a miss."""
+        entry = self.index.get(key)
+        if entry is None:
+            return None
+        if entry.get("ckpt") and not os.path.exists(self.ckpt_path(entry["ckpt"])):
+            return None
+        return entry
+
+    def put(self, key: str, ev: dict, ckpt_key: str | None = None) -> None:
+        self.index[key] = {"eval": {k: v for k, v in ev.items()
+                                    if k != "loss_curve"},
+                           "ckpt": ckpt_key}
+        tmp = self.index_path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(self.index, f)
+        os.replace(tmp, self.index_path)
+
+    def stats(self) -> dict:
+        return {"entries": len(self.index)}
+
+
+# ──────────────────────── 100x lever B: divergence kill ────────────────────────
+
+def should_kill(losses: list[float], grace: int = 8,
+                factor: float = 2.5) -> bool:
+    """True when a run is provably doomed: NaN/inf loss any time, or — after
+    `grace` steps — the recent rolling loss exceeds `factor` x the best
+    rolling loss seen so far. Pure function; unit-tested without torch."""
+    if not losses:
+        return False
+    last = losses[-1]
+    if last != last or last == float("inf"):   # NaN or inf
+        return True
+    if len(losses) < max(grace, 4):
+        return False
+    window = 3
+    rolling = [sum(losses[i - window:i]) / window
+               for i in range(window, len(losses) + 1)]
+    return rolling[-1] > factor * min(rolling)
+
+
+# ───────────────────────── 100x lever C: config dedupe ─────────────────────────
+
+def cfg_fingerprint(cfg: dict) -> str:
+    return json.dumps({k: cfg[k] for k in sorted(cfg) if k in _MC_FIELDS},
+                      sort_keys=True)
+
+
+def dedupe_candidates(candidates: list[dict]) -> tuple[list[dict], dict]:
+    """(unique_representatives, alias_map). Aliases index into the reps list —
+    duplicated configs train once and share the eval."""
+    reps: list[dict] = []
+    seen: dict[str, int] = {}
+    alias: dict[int, int] = {}
+    for i, c in enumerate(candidates):
+        fp = cfg_fingerprint(c)
+        if fp in seen:
+            alias[i] = seen[fp]
+        else:
+            seen[fp] = len(reps)
+            alias[i] = len(reps)
+            reps.append(c)
+    return reps, alias
 
 
 def _device() -> str:
@@ -151,6 +275,9 @@ def _train_task(task: dict) -> dict:
     model.train()
     t0 = time.time()
     losses = []
+    killed = False
+    kill_factor = task.get("kill_factor")   # None disables the kill switch
+    kill_grace = task.get("kill_grace", 8)
     for _ in range(task["steps"]):
         x, y = train_loader.batch()
         _, loss = model(x, targets=y)
@@ -159,7 +286,24 @@ def _train_task(task: dict) -> dict:
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step()
         losses.append(loss.item())
+        if kill_factor and should_kill(losses, grace=kill_grace,
+                                       factor=kill_factor):
+            killed = True
+            break
     train_s = time.time() - t0
+
+    if killed:
+        # provably doomed: skip val/sample/ckpt, rank last, refund the rest
+        return {
+            "val_loss": float("inf"), "val_ppl": float("inf"),
+            "cloze_accuracy": 0.0,
+            "tokens_seen": len(losses) * bs * mc.max_seq_len,
+            "elapsed_s": round(time.time() - t0, 1),
+            "train_s": round(train_s, 2), "loss_curve": losses, "sample": "",
+            "params_m": round(model.num_params() / 1e6, 2),
+            "trained_steps": prior_steps + len(losses),
+            "killed": True, "steps_saved": task["steps"] - len(losses),
+        }
 
     model.eval()
     if task.get("deterministic_val"):
@@ -194,6 +338,8 @@ def _train_task(task: dict) -> dict:
         "sample": sample,
         "params_m": round(model.num_params() / 1e6, 2),
         "trained_steps": total_steps,
+        "killed": False,
+        "steps_saved": 0,
     }
 
 
@@ -271,6 +417,8 @@ def parallel_halving(
     want_sample: bool = True,
     deterministic_val: bool = False,
     on_eval=None,                 # callback(cfg, eval_dict, delta_steps) per eval
+    cache: EvalCache | None = None,   # 100x lever A: skip identical work
+    kill_factor: float | None = None,  # 100x lever B: e.g. 2.5 enables kill
 ) -> list[dict]:
     """Drop-in for hyperband.successive_halving, but parallel + promoted.
 
@@ -280,17 +428,33 @@ def parallel_halving(
       costs r + r + 2r = 4r AND the winner has genuinely accumulated training)
     - intermediate rungs use fewer val batches and skip sample generation; the
       winner gets the full eval + sample at the end
+    - with `cache`, evaluations are content-addressed: hits cost zero steps
+      (on_eval sees delta 0) and checkpoints resume across runs/arms/restarts
+    - with `kill_factor`, provably diverging runs stop mid-rung and rank last
+    - duplicate configs are trained once (dedupe)
     """
     profile = profile or HarnessProfile.load() or HarnessProfile.fallback()
     run_dir = run_dir or os.path.join(RUNS_DIR, time.strftime("%Y%m%d-%H%M%S"))
     os.makedirs(run_dir, exist_ok=True)
     device = profile.device if profile.device != "cuda" or torch.cuda.is_available() else _device()
 
-    survivors = list(candidates)
+    survivors, _alias = dedupe_candidates(list(candidates))
+    if len(survivors) < len(candidates):
+        _log_event(stage="harness_dedupe",
+                   dropped=len(candidates) - len(survivors))
     for i, c in enumerate(survivors):
         c["_cid"] = i
     trained = {i: 0 for i in range(len(survivors))}   # cid -> cumulative steps
+    ckpts: dict[int, str] = {}                        # cid -> latest ckpt path
     target = bracket.initial_steps
+    hits = 0
+
+    def _keys(cfg: dict, steps_total: int, val_batches: int) -> tuple[str, str]:
+        common = dict(lr=lr, batch_size=profile.batch_size,
+                      steps_total=steps_total, deterministic_val=deterministic_val)
+        train_k = eval_key(cfg, val_batches=0, **common)
+        eval_k = eval_key(cfg, val_batches=val_batches, **common)
+        return train_k, eval_k
 
     own_pool = pool is None
     if own_pool:
@@ -302,31 +466,57 @@ def parallel_halving(
         cores = os.cpu_count() or 2
         for halving in range(bracket.halvings + 1):
             last_rung = halving == bracket.halvings
-            concurrency = max(1, min(len(survivors), profile.workers))
-            threads = max(profile.threads_per_worker, cores // concurrency)
-            tasks = []
+            vb = val_batches_final if last_rung else val_batches_rung
+            pending, tasks = [], []
             for cfg in survivors:
                 cid = cfg["_cid"]
-                ck = os.path.join(run_dir, f"c{cid}.pt")
+                train_k, eval_k = _keys(cfg, target, vb)
+                entry = cache.get(eval_k) if cache else None
+                if entry is not None:
+                    hits += 1
+                    cfg["_eval"] = dict(entry["eval"])
+                    cfg["_steps"] = entry["eval"]["trained_steps"]
+                    trained[cid] = target
+                    if entry.get("ckpt"):
+                        ckpts[cid] = cache.ckpt_path(entry["ckpt"])
+                    if on_eval is not None:
+                        on_eval(cfg, cfg["_eval"], 0)   # zero steps billed
+                    continue
+                ck_out = cache.ckpt_path(train_k) if cache else \
+                    os.path.join(run_dir, f"c{cid}.pt")
+                pending.append((cfg, train_k, eval_k, ck_out))
+            concurrency = max(1, min(len(pending) or 1, profile.workers))
+            threads = max(profile.threads_per_worker, cores // concurrency)
+            for cfg, _tk, _ek, ck_out in pending:
+                cid = cfg["_cid"]
                 tasks.append({
                     "cfg": cfg, "steps": target - trained[cid], "lr": lr,
                     "batch_size": profile.batch_size, "threads": threads,
-                    "val_batches": val_batches_final if last_rung else val_batches_rung,
-                    "ckpt_in": ck if trained[cid] else None, "ckpt_out": ck,
+                    "val_batches": vb,
+                    "ckpt_in": ckpts.get(cid) if trained[cid] else None,
+                    "ckpt_out": ck_out,
                     "want_sample": False, "device": device,
                     "deterministic_val": deterministic_val,
+                    "kill_factor": kill_factor,
                 })
             t0 = time.time()
-            evals = list(pool.map(_train_task, tasks))
-            for cfg, ev, task in zip(survivors, evals, tasks):
+            evals = list(pool.map(_train_task, tasks)) if tasks else []
+            for (cfg, train_k, eval_k, ck_out), ev, task in zip(pending, evals, tasks):
+                cid = cfg["_cid"]
                 cfg["_eval"] = ev
                 cfg["_steps"] = ev["trained_steps"]
-                trained[cfg["_cid"]] = ev["trained_steps"]
+                trained[cid] = ev["trained_steps"]
+                if not ev.get("killed"):
+                    ckpts[cid] = ck_out
+                if cache:
+                    cache.put(eval_k, ev,
+                              ckpt_key=None if ev.get("killed") else train_k)
                 if on_eval is not None:
-                    on_eval(cfg, ev, task["steps"])
+                    on_eval(cfg, ev, task["steps"] - ev.get("steps_saved", 0))
             survivors.sort(key=lambda c: c["_eval"]["val_ppl"])
             _log_event(stage="harness_rung", rung=halving, steps=target,
-                       n=len(survivors), best_ppl=survivors[0]["_eval"]["val_ppl"],
+                       n=len(survivors), cache_hits=hits,
+                       best_ppl=survivors[0]["_eval"]["val_ppl"],
                        wall_s=round(time.time() - t0, 1), workers=profile.workers)
             if not last_rung:
                 survivors = survivors[: max(1, len(survivors) // bracket.eta)]
@@ -338,11 +528,17 @@ def parallel_halving(
     if want_sample:
         # one sample for the winner only — the slow autoregressive part runs once
         winner = survivors[0]
-        ck = os.path.join(run_dir, f"c{winner['_cid']}.pt")
-        model = LLM(ModelConfig(**_clean(winner))).to(device)
-        model.load_state_dict(torch.load(ck, map_location=device, weights_only=False)["model"])
-        model.eval()
-        winner["_eval"]["sample"] = _generate_sample(model, device)
+        if not winner["_eval"].get("sample"):
+            ck = ckpts.get(winner["_cid"],
+                           os.path.join(run_dir, f"c{winner['_cid']}.pt"))
+            model = LLM(ModelConfig(**_clean(winner))).to(device)
+            model.load_state_dict(
+                torch.load(ck, map_location=device, weights_only=False)["model"])
+            model.eval()
+            winner["_eval"]["sample"] = _generate_sample(model, device)
+            if cache:
+                _tk, eval_k = _keys(winner, trained[winner["_cid"]], val_batches_final)
+                cache.put(eval_k, winner["_eval"], ckpt_key=_tk)
     return survivors
 
 
@@ -493,6 +689,97 @@ def bench(n: int = 4, halvings: int = 2, initial_steps: int = 6,
     return report
 
 
+# ────────────────────────── benchmark: prove the 100x ──────────────────────────
+
+def bench100(n: int = 4, halvings: int = 2, initial_steps: int = 4,
+             seed: int = 0, kill_lr: float = 0.05, kill_steps: int = 30) -> dict:
+    """Measure each 100x lever, then the composite, on this machine.
+
+    1. baseline sweep (serial, from-scratch, sample every eval)   -> T_base
+    2. COLD harness sweep (parallel + promote + kill, cache empty) -> T_cold
+    3. WARM identical re-sweep (every eval is a cache hit)         -> T_warm
+    4. kill scenario: a deliberately diverging population (high lr)
+       measures the fraction of budget the kill switch refunds
+
+    Composite for a k-sweep campaign (what arms/regression sweeps actually
+    do): k*T_base vs T_cold + (k-1)*T_warm.
+    """
+    import shutil
+    from hyperband import Bracket, random_config
+
+    rng = random.Random(seed)
+    bracket = Bracket(n_candidates=n, halvings=halvings, initial_steps=initial_steps)
+    base_cands = [random_config(rng) for _ in range(n)]
+    print(f"bench100: bracket n={n} halvings={halvings} initial_steps={initial_steps}"
+          f" on {_device()} ({os.cpu_count()} cores)")
+
+    t0 = time.time()
+    base_surv, base_evals = _baseline_serial(copy.deepcopy(base_cands), bracket)
+    t_base = time.time() - t0
+    print(f"bench100: BASELINE   {t_base:8.1f}s  (serial, from-scratch,"
+          f" {base_evals} evals, sample each)")
+
+    profile = load_or_tune(quick=True)
+    cache_dir = os.path.join(RUNS_DIR, "cache-bench100")
+    shutil.rmtree(cache_dir, ignore_errors=True)
+    cache = EvalCache(cache_dir)
+
+    t0 = time.time()
+    cold = parallel_halving(copy.deepcopy(base_cands), bracket, profile=profile,
+                            cache=cache, kill_factor=2.5, deterministic_val=True)
+    t_cold = time.time() - t0
+    print(f"bench100: COLD sweep {t_cold:8.1f}s  best_ppl={cold[0]['_eval']['val_ppl']:.1f}"
+          f"  (parallel+promote+kill, cache empty)")
+
+    t0 = time.time()
+    warm = parallel_halving(copy.deepcopy(base_cands), bracket, profile=profile,
+                            cache=EvalCache(cache_dir), kill_factor=2.5,
+                            deterministic_val=True)
+    t_warm = time.time() - t0
+    print(f"bench100: WARM sweep {t_warm:8.2f}s  best_ppl={warm[0]['_eval']['val_ppl']:.1f}"
+          f"  (identical re-sweep, all cache hits)")
+
+    # kill lever, isolated: diverging population, single rung
+    kill_bracket = Bracket(n_candidates=n, halvings=0, initial_steps=kill_steps)
+    kill_cands = [random_config(rng) for _ in range(n)]
+    kill_surv = parallel_halving(copy.deepcopy(kill_cands), kill_bracket,
+                                 profile=profile, lr=kill_lr, want_sample=False,
+                                 kill_factor=2.5)
+    budget = n * kill_steps
+    saved = sum(c["_eval"].get("steps_saved", 0) for c in kill_surv)
+    n_killed = sum(1 for c in kill_surv if c["_eval"].get("killed"))
+    print(f"bench100: KILL       lr={kill_lr}: {n_killed}/{n} runs killed,"
+          f" {saved}/{budget} steps refunded ({100 * saved / budget:.0f}%)")
+
+    def campaign(k: int) -> float:
+        return k * t_base / (t_cold + (k - 1) * t_warm)
+
+    warm_x = t_base / t_warm
+    ks = [1, 3, 10, 50]
+    report = {
+        "t_base_s": round(t_base, 1), "t_cold_s": round(t_cold, 1),
+        "t_warm_s": round(t_warm, 3),
+        "cold_speedup": round(t_base / t_cold, 2),
+        "warm_sweep_speedup": round(warm_x, 1),
+        "campaign_speedup": {str(k): round(campaign(k), 1) for k in ks},
+        "campaign_limit": round(warm_x, 1),
+        "kill": {"lr": kill_lr, "killed": n_killed, "of": n,
+                 "steps_refunded_pct": round(100 * saved / budget, 1)},
+        "cache_entries": EvalCache(cache_dir).stats()["entries"],
+        "baseline_best_ppl": round(base_surv[0]["_eval"]["val_ppl"], 2),
+        "cold_best_ppl": round(cold[0]["_eval"]["val_ppl"], 2),
+        "profile": asdict(profile),
+    }
+    for k in ks:
+        print(f"bench100: campaign of {k:>3} sweeps -> {campaign(k):7.1f}x")
+    print(f"bench100: WARM-SWEEP SPEEDUP {warm_x:,.0f}x (campaign asymptote)")
+    with open(os.path.join(os.path.dirname(__file__), "bench100_harness.json"), "w") as f:
+        json.dump(report, f, indent=2)
+    _log_event(stage="harness_bench100",
+               **{k: v for k, v in report.items() if k not in ("profile",)})
+    return report
+
+
 # ────────────────────────── CLI ──────────────────────────
 
 def main() -> None:
@@ -516,6 +803,14 @@ def main() -> None:
     r.add_argument("--halvings", type=int, default=2)
     r.add_argument("--initial-steps", type=int, default=25)
     r.add_argument("--seed", type=int, default=0)
+    r.add_argument("--no-cache", action="store_true")
+    r.add_argument("--no-kill", action="store_true")
+
+    b100 = sub.add_parser("bench100", help="measure the 100x levers end to end")
+    b100.add_argument("--n", type=int, default=4)
+    b100.add_argument("--halvings", type=int, default=2)
+    b100.add_argument("--initial-steps", type=int, default=4)
+    b100.add_argument("--seed", type=int, default=0)
 
     args = ap.parse_args()
     if args.cmd == "tune":
@@ -523,13 +818,19 @@ def main() -> None:
     elif args.cmd == "bench":
         bench(n=args.n, halvings=args.halvings, initial_steps=args.initial_steps,
               seed=args.seed, oversample=args.oversample)
+    elif args.cmd == "bench100":
+        bench100(n=args.n, halvings=args.halvings,
+                 initial_steps=args.initial_steps, seed=args.seed)
     elif args.cmd == "run":
         from hyperband import Bracket, random_config
         rng = random.Random(args.seed)
         bracket = Bracket(n_candidates=args.n, halvings=args.halvings,
                           initial_steps=args.initial_steps)
         cands = proxy_filter([random_config(rng) for _ in range(args.n * 2)], keep=args.n)
-        survivors = parallel_halving(cands, bracket, profile=load_or_tune())
+        survivors = parallel_halving(
+            cands, bracket, profile=load_or_tune(),
+            cache=None if args.no_cache else EvalCache(),
+            kill_factor=None if args.no_kill else 2.5)
         w = survivors[0]["_eval"]
         print(json.dumps({"val_ppl": w["val_ppl"], "params_m": w["params_m"],
                           "trained_steps": w["trained_steps"],
