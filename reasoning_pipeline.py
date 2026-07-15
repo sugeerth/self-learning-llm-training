@@ -74,8 +74,10 @@ class VerifiableReward:
         ans = parse_reflection(generated)["answer"]
         if not ans:
             ans = generated.split()[-1] if generated.split() else ""
-        # extract a number, possibly with $ or commas
-        gen_num = re.findall(r"-?\$?\d{1,3}(?:,\d{3})*(?:\.\d+)?|-?\d+(?:\.\d+)?", ans.replace(",", ""))
+        # extract a number, possibly with $ or commas. Commas are stripped first,
+        # so we match a contiguous digit run: the old comma-grouped pattern capped the
+        # integer part at 3 digits and split numbers >= 1000 (e.g. "1234" -> "4").
+        gen_num = re.findall(r"-?\$?\d+(?:\.\d+)?", ans.replace(",", ""))
         gold_num = re.findall(r"-?\d+(?:\.\d+)?", gold.replace(",", ""))
         if not gen_num or not gold_num:
             return 0.0
