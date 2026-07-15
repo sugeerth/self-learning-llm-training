@@ -73,8 +73,10 @@ class NativeEngine:
                 self.model, {torch.nn.Linear}, dtype=torch.qint8)
         # Note: int4 on PyTorch needs bitsandbytes — separate path
 
-        import tiktoken
-        self.enc = tiktoken.get_encoding("gpt2")
+        # data.tokenizer() falls back to byte-level when the gpt2 vocab can't
+        # be fetched (offline/proxied), matching how the corpus was tokenized.
+        from data import tokenizer
+        self.enc = tokenizer()
 
     @torch.no_grad()
     def generate(self, prompt: str, max_new_tokens: int = 80,

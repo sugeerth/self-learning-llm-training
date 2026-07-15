@@ -109,3 +109,37 @@ Both levers are default-on in `parallel_halving` (opt out: `auto_vocab=False`,
 `amp=False`) and keyed into the eval cache, so fp32/amp and clamped/unclamped
 results never collide. Historical arms JSONs predate the ppl-scale change —
 re-baseline before comparing.
+
+## Runs without an API key: offline agent brains
+
+The multi-agent hierarchy no longer requires `ANTHROPIC_API_KEY`. When the key
+is absent (or `AGENTS_OFFLINE=1`), each agent routes to a local, deterministic
+brain in `offline_agents.py` that makes the same *kind* of decision the LLM
+would, with the same input/output shape — so the whole loop runs with zero
+credentials and stays genuinely agentic:
+
+- **Trainer** — explore/exploit over the search space: builds a candidate pool
+  from mutations of the current best plus fresh random draws, ranks them by the
+  `CheapPrior` acquisition (lower predicted log-ppl wins), and proposes the most
+  attractive untried arch. Compounds across runs via `prior_store.json`, exactly
+  like the online path.
+- **Evaluator** — scores `sample_quality` (1–10) from real signals: printable-
+  character ratio, bigram-repetition, and Shakespeare play-structure (speaker
+  lines, colons). Flags divergence in the notes.
+- **Judge** — rule-based skeptic checking the exact failure modes it's told to
+  look for: quality inflated vs val_ppl, notes contradicting numbers, divergence
+  not noted, cloze ignored. Emits accept/confidence/flagged/reasoning.
+- **MetaJudge** — statistical bias audit over the verdict history (lenient /
+  strict), plus a sanity check of the current verdict against the run's own
+  numbers (accepting a diverged or very-poor run is "incorrect").
+
+`agents.use_offline()` gates the routing: `AGENTS_ONLINE=1` forces the API,
+`AGENTS_OFFLINE=1` forces local, otherwise it's local iff no key is set. 12 unit
+tests (`tests/test_offline_agents.py`) cover constraint-valid proposals, the
+score signals, all Judge flags, and bias detection.
+
+Also fixed a latent crash on the offline path: `self_learning_runner.py` and
+`inference.py` called `tiktoken.get_encoding("gpt2")` directly, which fails when
+the vocab can't be fetched (offline/proxied) AND would encode into a vocab the
+byte-level-tokenized model was never trained on. Both now use
+`data.tokenizer()`, which falls back to byte-level and matches the corpus.
