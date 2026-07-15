@@ -65,9 +65,12 @@ def train_partial(cfg: dict, steps: int, lr: float = 3e-4) -> dict:
     val_loss = float(sum(val_losses) / max(len(val_losses), 1))
     val_ppl = float(2.71828 ** val_loss)
 
-    # quick sample
-    import tiktoken
-    enc = tiktoken.get_encoding("gpt2")
+    # quick sample — use data.tokenizer() so we match the SAME token space the
+    # corpus was tokenized with (byte-level fallback when the gpt2 vocab can't
+    # be fetched); a raw tiktoken.get_encoding here both crashes offline and
+    # would encode into a vocab the model was never trained on.
+    from data import tokenizer
+    enc = tokenizer()
     prompt = "ROMEO:\n"
     ids = torch.tensor([enc.encode(prompt)], device=device)
     out = model.generate(ids, max_new_tokens=80, temperature=0.8, top_k=50)

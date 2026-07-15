@@ -52,6 +52,21 @@ def client() -> Anthropic:
     return _client
 
 
+def use_offline() -> bool:
+    """Run the agent hierarchy with LOCAL brains instead of the API.
+
+    On when AGENTS_OFFLINE=1, or (the common case) whenever no
+    ANTHROPIC_API_KEY is set — so the full multi-agent loop runs with zero
+    credentials. AGENTS_ONLINE=1 forces the API path even if a key check
+    would otherwise route offline.
+    """
+    if os.environ.get("AGENTS_ONLINE") == "1":
+        return False
+    if os.environ.get("AGENTS_OFFLINE") == "1":
+        return True
+    return not os.environ.get("ANTHROPIC_API_KEY")
+
+
 # ────────────────────────────── shared types ──────────────────────────────
 
 @dataclass
@@ -183,6 +198,11 @@ near the current Pareto frontier (params vs val_ppl)."""
 
     @traced("trainer.propose")
     def propose(self, history: list[dict]) -> TrainProposal:
+        if use_offline():
+            from offline_agents import offline_propose
+            d = offline_propose(history)
+            log_event(agent=self.name, model="offline", response=d["rationale"][:200])
+            return TrainProposal(**d)
         msg = (
             "Prior sweep results (sorted best→worst by val_ppl):\n"
             + json.dumps(history, indent=2)
@@ -211,6 +231,11 @@ Rate sample_quality on coherence + style fidelity to Shakespeare, NOT semantics
 
     @traced("evaluator.score")
     def score(self, raw_metrics: dict, sample: str) -> EvalReport:
+        if use_offline():
+            from offline_agents import offline_score
+            d = offline_score(raw_metrics, sample)
+            log_event(agent=self.name, model="offline", response=d["notes"][:200])
+            return EvalReport(**d)
         msg = (
             f"Raw metrics:\n{json.dumps(raw_metrics, indent=2)}\n\n"
             f"Generated sample (prompt='ROMEO:\\n', temp=0.8):\n```\n{sample}\n```\n\n"
@@ -241,6 +266,11 @@ Return JSON:
 
     @traced("judge.audit")
     def audit(self, proposal: TrainProposal, report: EvalReport, sample: str) -> JudgeVerdict:
+        if use_offline():
+            from offline_agents import offline_audit
+            d = offline_audit(asdict(proposal), asdict(report), sample)
+            log_event(agent=self.name, model="offline", response=d["reasoning"][:200])
+            return JudgeVerdict(**d)
         msg = (
             f"Proposal: {asdict(proposal)}\n"
             f"Evaluator report: {asdict(report)}\n"
@@ -270,6 +300,11 @@ Return JSON:
 
     @traced("meta_judge.audit")
     def audit(self, judge_history: list[dict], current: dict) -> MetaVerdict:
+        if use_offline():
+            from offline_agents import offline_meta
+            d = offline_meta(judge_history, current)
+            log_event(agent=self.name, model="offline", response=d["reasoning"][:200])
+            return MetaVerdict(**d)
         msg = (
             f"Judge's last 10 verdicts:\n{json.dumps(judge_history[-10:], indent=2)}\n\n"
             f"Current verdict to audit:\n{json.dumps(current, indent=2)}\n\n"
