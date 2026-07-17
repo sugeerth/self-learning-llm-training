@@ -8,6 +8,8 @@ steps) with an IDENTICAL deterministic eval:
   hyperband  promoted successive halving through the throughput harness
   prior      hyperband + CheapPrior acquisition over oversampled pools,
              prior refit from every full-depth eval across brackets
+  evolve     genetic search: crossover+mutation of the winning genomes,
+             offspring pre-screened by the CheapPrior surrogate (evolve.py)
   agent      prior + the Trainer agent proposes one candidate per bracket
              (needs ANTHROPIC_API_KEY — skipped gracefully without it)
 
@@ -43,7 +45,7 @@ REPORT_JSON = os.path.join(os.path.dirname(__file__), "arms_report.json")
 REPORT_HTML = os.path.join(os.path.dirname(__file__), "arms_report.html")
 
 ARM_COLORS = {"random": "#9aa0a6", "hyperband": "#4285f4",
-              "prior": "#34a853", "agent": "#a142f4"}
+              "prior": "#34a853", "agent": "#a142f4", "evolve": "#ea8600"}
 
 
 class Trajectory:
@@ -147,6 +149,23 @@ def run_bracketed(seed: int, budget: int, bracket: Bracket,
         b += 1
     if prior is not None and warm_prior_path:
         prior.save(warm_prior_path)
+    return traj
+
+
+def run_evolve_arm(seed: int, budget: int, full_steps: int, profile: HarnessProfile,
+                   pool: ProcessPoolExecutor) -> Trajectory:
+    """Prior-guided evolutionary arm — bred+screened genomes at the SAME
+    full-depth eval and budget as random, so the only variable is where the
+    next genome comes from (crossover+mutation of winners vs a uniform draw).
+    A small pop keeps 2-3 generations inside the arms budget."""
+    from evolve import run_evolve
+    res = run_evolve(seed, budget, full_steps, profile, pool,
+                     pop=4, elite=2, oversample=8)
+    traj = Trajectory()
+    prev = 0
+    for p in res["trajectory"]:
+        traj.record({"val_ppl": p["ppl"]}, p["steps"] - prev)
+        prev = p["steps"]
     return traj
 
 
@@ -325,6 +344,7 @@ def run_arms(seeds: int, budget: int, bracket: Bracket, full_steps: int,
         "prior": lambda s, pool: run_bracketed(s, budget, bracket, profile, pool,
                                                use_prior=True, use_agent=False,
                                                warm_prior_path=warm_prior_path),
+        "evolve": lambda s, pool: run_evolve_arm(s, budget, full_steps, profile, pool),
     }
     skipped = []
     if os.environ.get("ANTHROPIC_API_KEY"):
