@@ -41,6 +41,8 @@ bench_harness.json
 arms_report.json
 arms_report.html
 flywheel_report*.json
+evolve_report.json
+evolve_report.html
 prior_store.json
 
 # Experiment tracking / logs
