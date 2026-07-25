@@ -141,6 +141,13 @@ def run_bracketed(seed: int, budget: int, bracket: Bracket,
             # the eval cache stays OFF here so every arm pays full cost and
             # paired-budget comparisons remain honest
             kill_factor=2.5,
+            # auto_vocab OFF for the SAME reason: parallel_halving clamps the
+            # vocab to effective_vocab (~128) by default, but run_random and the
+            # evolve arm eval at the model's declared 50304. val_ppl scales with
+            # the softmax denominator, so a clamped arm would post ~50x lower ppl
+            # for identical weights — an apples-to-oranges regret target. Keep
+            # every arm on ONE vocab so "steps to random's quality" is honest.
+            auto_vocab=False,
         )
         w = survivors[0]
         history.append({"name": f"b{b}-winner", "config": _pub(w),
