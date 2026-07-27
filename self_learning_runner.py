@@ -54,16 +54,19 @@ def train_partial(cfg: dict, steps: int, lr: float = 3e-4) -> dict:
         opt.step()
         losses.append(loss.item())
 
-    # eval
+    # eval — loss + cloze (top-1 next-token accuracy) in one pass
     model.eval()
-    val_losses = []
+    val_losses, correct, total = [], 0, 0
     with torch.no_grad():
         for j in range(20):
             x, y = val_loader.batch()
-            _, loss = model(x, targets=y)
+            logits, loss = model(x, targets=y)
             val_losses.append(loss.item())
+            correct += int((logits.argmax(dim=-1) == y).sum().item())
+            total += y.numel()
     val_loss = float(sum(val_losses) / max(len(val_losses), 1))
     val_ppl = float(2.71828 ** val_loss)
+    cloze_accuracy = round(correct / total, 4) if total else 0.0
 
     # quick sample — use data.tokenizer() so we match the SAME token space the
     # corpus was tokenized with (byte-level fallback when the gpt2 vocab can't
@@ -79,7 +82,7 @@ def train_partial(cfg: dict, steps: int, lr: float = 3e-4) -> dict:
     return {
         "val_loss": val_loss,
         "val_ppl": val_ppl,
-        "cloze_accuracy": 0.0,  # cheap eval — leave for full benchmark
+        "cloze_accuracy": cloze_accuracy,  # top-1 next-token accuracy on val
         "tokens_seen": steps * 8 * mc.max_seq_len,
         "elapsed_s": round(time.time() - t0, 1),
         "loss_curve": losses,
