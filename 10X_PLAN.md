@@ -143,3 +143,18 @@ Also fixed a latent crash on the offline path: `self_learning_runner.py` and
 the vocab can't be fetched (offline/proxied) AND would encode into a vocab the
 byte-level-tokenized model was never trained on. Both now use
 `data.tokenizer()`, which falls back to byte-level and matches the corpus.
+
+## Real cloze metric: a second eval axis for the Judge
+
+The offline run surfaced that the Judge flagged "cloze_accuracy ignored" every
+round — because nothing computed it (the eval hardcoded 0.0). Now both eval
+paths compute a real **cloze accuracy = top-1 next-token prediction accuracy**
+on the same fixed deterministic val windows as val_loss, in a single forward
+pass (`harness._fixed_val_metrics`; the runner's `train_partial` likewise).
+
+It's a capability signal orthogonal to perplexity — two models can share a
+val_ppl while differing in how often they nail the exact next token. The
+offline Evaluator now reports `cloze=` in its notes and lets a genuinely
+measured near-zero cloze temper an over-generous sample score (legible but
+can't predict the next token); an *unmeasured* cloze never penalizes. The
+Judge no longer spuriously flags it, and has a real second axis to audit.

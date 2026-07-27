@@ -64,6 +64,11 @@ from model import LLM, ModelConfig
 PROFILE_PATH = os.path.join(os.path.dirname(__file__), "harness_profile.json")
 RUNS_DIR = os.path.join(os.path.dirname(__file__), "runs")
 CACHE_DIR = os.path.join(RUNS_DIR, "cache")
+
+# Bump when the eval COMPUTATION changes (not just training) so old cache
+# entries — keyed on inputs — don't serve stale outputs. v2 added a real
+# cloze_accuracy (top-1 next-token) to every eval; pre-v2 entries stored 0.0.
+EVAL_VERSION = 2
 _MC_FIELDS = {f.name for f in dataclasses.fields(ModelConfig)}
 
 
@@ -108,7 +113,7 @@ def eval_key(cfg: dict, *, lr: float, batch_size: int, steps_total: int,
         "lr": lr, "bs": batch_size, "steps": steps_total,
         "vb": val_batches, "dv": bool(deterministic_val),
         "bin": os.path.basename(train_bin) if train_bin else None,
-        "seed": torch_seed, "amp": bool(amp),
+        "seed": torch_seed, "amp": bool(amp), "ev": EVAL_VERSION,
     }, sort_keys=True)
     return hashlib.sha256(payload.encode()).hexdigest()[:20]
 
@@ -339,15 +344,19 @@ def _train_task(task: dict) -> dict:
 
     model.eval()
     if task.get("deterministic_val"):
-        val_loss = _fixed_val_loss(model, val_bin, mc, task["val_batches"], bs, device)
+        val_loss, cloze_acc = _fixed_val_metrics(
+            model, val_bin, mc, task["val_batches"], bs, device)
     else:
-        val_losses = []
+        val_losses, correct, total = [], 0, 0
         with torch.no_grad():
             for _ in range(task["val_batches"]):
                 x, y = val_loader.batch()
-                _, loss = model(x, targets=y)
+                logits, loss = model(x, targets=y)
                 val_losses.append(loss.item())
+                correct += int((logits.argmax(dim=-1) == y).sum().item())
+                total += y.numel()
         val_loss = float(sum(val_losses) / max(len(val_losses), 1))
+        cloze_acc = correct / total if total else 0.0
 
     sample = ""
     if task.get("want_sample"):
@@ -362,7 +371,7 @@ def _train_task(task: dict) -> dict:
     return {
         "val_loss": val_loss,
         "val_ppl": float(math.e ** val_loss),
-        "cloze_accuracy": 0.0,
+        "cloze_accuracy": round(cloze_acc, 4),
         "tokens_seen": total_steps * bs * mc.max_seq_len,
         "elapsed_s": round(time.time() - t0, 1),
         "train_s": round(train_s, 2),
@@ -375,26 +384,43 @@ def _train_task(task: dict) -> dict:
     }
 
 
-def _fixed_val_loss(model, val_bin: str, mc, batches: int, batch_size: int,
-                    device: str) -> float:
-    """Deterministic validation: fixed sequential windows of the val set.
+def _fixed_val_metrics(model, val_bin: str, mc, batches: int, batch_size: int,
+                       device: str) -> tuple[float, float]:
+    """Deterministic validation over fixed sequential windows: returns
+    (val_loss, cloze_accuracy) in a single forward pass.
 
     Random val batches are fine for one run but make cross-arm comparisons
     noisy — two identical models can differ by luck of the draw. Fixed windows
-    make val_ppl a pure function of the weights."""
+    make both metrics pure functions of the weights.
+
+    cloze_accuracy = mean top-1 next-token prediction accuracy (argmax logits
+    == target). It's a capability signal orthogonal to perplexity: two models
+    can share a val_ppl while differing in how often they nail the exact next
+    token — the second axis the JudgeAgent is told not to ignore."""
     import numpy as np
     data = np.memmap(val_bin, dtype=np.uint16, mode="r")
     seq = mc.max_seq_len
-    losses = []
+    losses, correct, total = [], 0, 0
     with torch.no_grad():
         for b in range(batches):
             idx = [((b * batch_size + j) * seq) % (len(data) - seq - 1)
                    for j in range(batch_size)]
             x = torch.stack([torch.from_numpy(data[i:i + seq].astype("int64")) for i in idx])
             y = torch.stack([torch.from_numpy(data[i + 1:i + 1 + seq].astype("int64")) for i in idx])
-            _, loss = model(x.to(device), targets=y.to(device))
+            y = y.to(device)
+            logits, loss = model(x.to(device), targets=y)
             losses.append(loss.item())
-    return float(sum(losses) / max(len(losses), 1))
+            correct += int((logits.argmax(dim=-1) == y).sum().item())
+            total += y.numel()
+    val_loss = float(sum(losses) / max(len(losses), 1))
+    cloze = correct / total if total else 0.0
+    return val_loss, cloze
+
+
+def _fixed_val_loss(model, val_bin: str, mc, batches: int, batch_size: int,
+                    device: str) -> float:
+    """Back-compat wrapper — loss only."""
+    return _fixed_val_metrics(model, val_bin, mc, batches, batch_size, device)[0]
 
 
 def _generate_sample(model, device: str, prompt: str = "ROMEO:\n") -> str:

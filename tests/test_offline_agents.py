@@ -116,3 +116,29 @@ def test_meta_passes_consistent_verdict():
                           "report": {"val_ppl": 21.0}})
     assert m["judge_was_correct"] is True
     assert m["bias_detected"] is None
+
+
+# ── cloze axis (real next-token accuracy now flows through) ──────────────
+
+def test_score_reports_cloze_and_penalizes_legible_but_low_cloze():
+    good = "ROMEO:\nBut soft what light through yonder window breaks"
+    hi = offline_score({"val_ppl": 20.0, "cloze_accuracy": 0.55}, good)
+    lo = offline_score({"val_ppl": 20.0, "cloze_accuracy": 0.0}, good)
+    assert "cloze=0.55" in hi["notes"]
+    assert hi["sample_quality"] > lo["sample_quality"]   # low cloze tempers it
+    assert "cloze=0.00" in lo["notes"]
+
+
+def test_score_absent_cloze_does_not_penalize():
+    good = "ROMEO:\nBut soft what light through yonder window breaks"
+    with_zero = offline_score({"val_ppl": 20.0, "cloze_accuracy": 0.0}, good)
+    absent = offline_score({"val_ppl": 20.0}, good)          # not measured
+    assert absent["sample_quality"] > with_zero["sample_quality"]
+
+
+def test_judge_does_not_flag_cloze_when_reported():
+    # a measured cloze in the notes means the evaluator did NOT ignore it
+    report = offline_score({"val_ppl": 22.0, "cloze_accuracy": 0.4},
+                           "ROMEO:\nsome legible text here")
+    v = offline_audit(_cfg(), report, "ROMEO:\nsome legible text here")
+    assert not any("cloze" in f for f in v["flagged"])
