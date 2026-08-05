@@ -2,7 +2,9 @@
 .env
 .env.*
 !.env.example
-.claude/
+# ignore local Claude settings, but keep shared project skills tracked
+.claude/*
+!.claude/skills/
 
 # Python
 __pycache__/

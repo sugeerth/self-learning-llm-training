@@ -158,3 +158,26 @@ offline Evaluator now reports `cloze=` in its notes and lets a genuinely
 measured near-zero cloze temper an over-generous sample score (legible but
 can't predict the next token); an *unmeasured* cloze never penalizes. The
 Judge no longer spuriously flags it, and has a real second axis to audit.
+
+## Local-first RAG over the prep documents (rag/)
+
+A retrieval layer that grounds answers in the project's existing document
+universe first and treats the web as strictly secondary — because the prep
+documents are the source of truth for this project, the open web isn't.
+
+- **Local-first with a coverage gate**: BM25 over the prep docs (README, PLAN,
+  ARCHITECTURE, SELF_LEARNING, model-onramp docs); the web is consulted only
+  when local `coverage` (share of query terms found) is below a gate, only for
+  the *uncovered* terms, ranked below local, and down-weighted (a web-reliant
+  answer is capped in confidence and tagged "treat as secondary").
+- **Excludes training data**: `data/tinyshakespeare.txt` is model input, not a
+  document to answer from — the corpus loader excludes `data/`, caches, and
+  dependency manifests so they can't pollute retrieval.
+- **Offline, deterministic, no API key**: pure-Python lexical retrieval; the
+  web source is pluggable and degrades to local-only on a blocked network.
+- **Understanding-first / interactive**: query expansion + gap-aware multi-hop;
+  `clarify()` flags vague queries; `study_questions()` turns retrieved passages
+  into definitional + cloze active-recall questions; every answer is cited with
+  provenance (prep vs web), coverage, confidence, and named gaps.
+- Packaged as a Claude Code skill (`.claude/skills/prep-rag/`) and a CLI
+  (`python -m rag query|study|clarify|index`). 13 tests.
