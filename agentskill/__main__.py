@@ -28,6 +28,12 @@ def main() -> None:
     s = sub.add_parser("score"); s.add_argument("--in", dest="inp", default="trajectories.jsonl"); s.add_argument("--top", type=int, default=10)
     cu = sub.add_parser("curate"); cu.add_argument("--in", dest="inp", default="trajectories.jsonl"); cu.add_argument("--out", default="sft.jsonl"); cu.add_argument("--min-quality", type=float, default=0.6)
     e = sub.add_parser("evaluate"); e.add_argument("--json", action="store_true"); e.add_argument("--seed", type=int, default=0); e.add_argument("-k", type=int, default=5)
+    e.add_argument("--full", action="store_true",
+                   help="closed-loop noisy env, ablations, multi-seed CIs, "
+                        "leave-one-domain-out transfer")
+    e.add_argument("--report", default=None, metavar="FILE",
+                   help="with --full: also write the markdown report here")
+    e.add_argument("--fail-rate", type=float, default=0.15)
     f = sub.add_parser("finetune"); f.add_argument("--sft", default="sft.jsonl"); f.add_argument("--base-model", default="sshleifer/tiny-gpt2"); f.add_argument("--max-steps", type=int, default=60)
 
     args = ap.parse_args()
@@ -47,11 +53,21 @@ def main() -> None:
         ex = build_sft_dataset(trajs, min_quality=args.min_quality, out_path=args.out)
         print(f"curated {len(ex)} SFT examples -> {args.out}")
     elif args.cmd == "evaluate":
-        result = compare(seed=args.seed, k=args.k)
-        if args.json:
-            print(json.dumps(result, indent=2))
+        if args.full:
+            from .evaluate import format_full_report, full_evaluation
+            res = full_evaluation(fail_rate=args.fail_rate, k=args.k)
+            text = json.dumps(res, indent=2) if args.json else format_full_report(res)
+            print(text)
+            if args.report:
+                with open(args.report, "w") as f:
+                    f.write(format_full_report(res) + "\n")
+                print(f"\nreport written -> {args.report}")
         else:
-            print(format_report(result))
+            result = compare(seed=args.seed, k=args.k)
+            if args.json:
+                print(json.dumps(result, indent=2))
+            else:
+                print(format_report(result))
     elif args.cmd == "finetune":
         from .finetune import lora_finetune
         out = lora_finetune(args.sft, base_model=args.base_model,

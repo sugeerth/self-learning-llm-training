@@ -148,6 +148,14 @@ def synth_trajectory(domain: str, family: str, i: int,
     else:                                      # failure: stop short + stray action
         steps = _steps_from_plan(plan[:-1]) + [
             Step("guess", rng.choice(DOMAIN_TOOLS[domain]), "no progress", ok=False)]
+    if success and rng.random() < 0.5:
+        # transient tool failure mid-plan, recovered by retrying the SAME tool —
+        # the flaky-tool pattern real agent logs are full of; this is what
+        # mining.mine_recovery() learns the retry rule from
+        ok_positions = [j for j, s in enumerate(steps) if s.ok]
+        j = rng.choice(ok_positions)
+        steps.insert(j, Step("tool errored", steps[j].tool,
+                             "transient error", ok=False))
     n = max(len(steps), 1)
     return Trajectory(task_id=f"{domain}-{family}-{i}", domain=domain, goal=goal,
                       steps=steps, success=success,
