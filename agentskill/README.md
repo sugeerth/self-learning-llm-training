@@ -37,7 +37,52 @@ Two ways to "learn from trajectories":
   experiences into weights. **GPU, on Colab, used sparingly** (tiny base model,
   rank 8, ≤60 steps, grad checkpointing, bf16).
 
-## Result (offline synthetic demonstration)
+## Result v2 — closed-loop, ablated, multi-seed (`evaluate --full`)
+
+v1 graded open-loop plans in a noise-free world, so "debugging and recovery"
+was never actually exercised at eval time. v2 fixes that:
+
+- **`env.py` — a closed-loop stochastic environment.** Every tool call can fail
+  transiently (15% by default, seeded, deterministic per seed). An agent is now
+  a *policy* that observes each outcome and picks the next action, so recovery
+  is a real, measured behavior — not a label on a trajectory.
+- **`mining.py` — skills are mined, not hardcoded.** `mine_recovery()` counts
+  fail→same-tool-retry events in the trajectories and only grants the policy a
+  retry rule when the evidence is strong (support ≥ 5, P(success) ≥ 0.7).
+  `mine_skills()` extracts the per-domain tool bigrams (e.g. swe:
+  `edit→run_tests`). Change the data and the learned behavior changes.
+- **Ablation grid** — plans and recovery switch independently, so the lift is
+  *attributed*, not just claimed. 5 seeds, mean ± 95% CI:
+
+| policy | success rate | tool efficiency | avg steps |
+|---|---|---|---|
+| baseline | 24% ± 10% | 96% ± 0% | 4.7 |
+| +plans (retrieved from trajectories) | 45% ± 8% | 99% ± 1% | 5.2 |
+| +recovery (mined retry rule) | 50% ± 0% | 96% ± 0% | 5.4 |
+| **learned (full)** | **100% ± 0%** | 99% ± 1% | 6.0 |
+
+Neither skill alone suffices; composed, they solve the suite. The full agent
+pays ~1.3 extra steps per task for retries — the cost metrics account for it.
+
+- **Leave-one-domain-out transfer** — memory and recovery are learned *without*
+  the held-out domain, then evaluated on it. Domain plans vanish (as they
+  should); the procedural retry skill survives and transfers:
+
+| held-out benchmark | baseline | learned (LODO) | lift |
+|---|---|---|---|
+| GAIA | 26% | 50% | +24% |
+| MLE-bench | 26% | 50% | +24% |
+| SWE-bench Verified | 20% | 50% | +30% |
+
+That is the project's research question answered in miniature: the *general*
+skill (recovery) transfers across domains; the *specific* skill (plans) does
+not — and the evaluation can tell them apart.
+
+Full report (regenerate with
+`python -m agentskill evaluate --full --report agentskill/RESULTS.md`):
+**[RESULTS.md](RESULTS.md)**
+
+## Result v1 (open-loop, noise-free)
 
 `python -m agentskill evaluate`:
 
@@ -71,7 +116,9 @@ being transferred is "recognise the task from experience and plan accordingly."
 python -m agentskill collect  --out trajectories.jsonl   # gather (public|synth)
 python -m agentskill score    --in  trajectories.jsonl   # rank by quality
 python -m agentskill curate   --out sft.jsonl            # high-quality SFT set
-python -m agentskill evaluate                            # baseline vs learned
+python -m agentskill evaluate                            # v1: open-loop compare
+python -m agentskill evaluate --full                     # v2: closed-loop study
+python -m agentskill evaluate --full --report agentskill/RESULTS.md
 python -m agentskill finetune --sft sft.jsonl            # LoRA (GPU/Colab)
 ```
 
@@ -96,8 +143,11 @@ python -m agentskill finetune --sft sft.jsonl            # LoRA (GPU/Colab)
 | `sources.py` | public-trajectory ingestion (pluggable fetchers) |
 | `scoring.py` | quality scoring: success · efficiency · tool relevance · recovery |
 | `memory.py` | trajectory memory + retrieval (reuses `rag/` BM25) |
-| `agents.py` | Baseline (memoryless) vs Trajectory-Learned (retrieval-augmented) |
+| `mining.py` | mined recovery rule + per-domain sub-skill n-grams |
+| `env.py` | closed-loop stochastic tool environment (transient failures) |
+| `agents.py` | open-loop agents (v1) + closed-loop policy ablation grid (v2) |
 | `benchmark.py` | GAIA/MLE/SWE-style tasks + grader (real-harness seam) |
-| `evaluate.py` | baseline-vs-learned metrics + report |
+| `evaluate.py` | v1 compare + v2 full study (ablations · CIs · LODO transfer) |
 | `finetune.py` | LoRA distillation (GPU/Colab, sparingly) |
 | `notebooks/colab_agentskill.ipynb` | run it all from Colab |
+| `RESULTS.md` | committed report from `evaluate --full` |

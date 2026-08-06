@@ -49,6 +49,25 @@ class BaselineAgent:
         return _rollout(list(plan))
 
 
+def consensus_plan(memory: TrajectoryMemory, domain: str, goal: str,
+                   k: int = 5) -> list[str] | None:
+    """The tool sequence the retrieved high-quality experiences agree on.
+    Adjacent duplicates (fail->retry artifacts in the data) are collapsed;
+    off-domain tools are stripped. None when no same-domain exemplar exists
+    — the caller falls back to the domain default."""
+    hits = memory.retrieve(f"{domain} {goal}", k=k)
+    seqs = [tuple(t.tools) for t, _ in hits if t.domain == domain and t.success]
+    if not seqs:
+        return None
+    best_seq = Counter(seqs).most_common(1)[0][0]
+    relevant = set(DOMAIN_TOOLS[domain])
+    plan: list[str] = []
+    for tool in best_seq:
+        if tool in relevant and (not plan or plan[-1] != tool):
+            plan.append(tool)
+    return plan
+
+
 class TrajectoryLearnedAgent:
     name = "trajectory-learned"
 
@@ -57,16 +76,78 @@ class TrajectoryLearnedAgent:
         self.k = k
 
     def act(self, domain: str, goal: str) -> Rollout:
-        hits = self.memory.retrieve(f"{domain} {goal}", k=self.k)
-        # keep same-domain, successful exemplars
-        seqs = [tuple(t.tools) for t, _ in hits
-                if t.domain == domain and t.success]
-        if not seqs:
-            plan = FAMILIES[(domain, _DEFAULT_FAMILY[domain])]
-            return _rollout(list(plan))
-        # imitate the tool sequence the retrieved experiences agree on, and
-        # strip the known dead-end first-steps recovered trajectories carry
-        best_seq = Counter(seqs).most_common(1)[0][0]
-        relevant = set(DOMAIN_TOOLS[domain])
-        plan = [t for t in best_seq if t in relevant]
+        plan = consensus_plan(self.memory, domain, goal, k=self.k)
+        if plan is None:
+            plan = list(FAMILIES[(domain, _DEFAULT_FAMILY[domain])])
         return _rollout(plan)
+
+
+# ────────────────── closed-loop policies (ToolEnv, v2) ──────────────────
+# In the stochastic environment an agent is a POLICY: it sees each step's
+# outcome and picks the next action. The four below form the ablation grid —
+# plans and recovery can be switched independently, so the evaluation can
+# attribute the lift to each learned skill.
+
+class PlanPolicy:
+    """Walk a plan; on a failed step, retry it if the mined RecoveryRule says
+    retrying flaky tools works (and within its retry budget), else move on —
+    exactly what a policy that never learned recovery would do."""
+
+    name = "plan"
+
+    def __init__(self, recovery=None):
+        self.recovery = recovery      # mining.RecoveryRule | None
+
+    def _plan(self, domain: str, goal: str) -> list[str]:
+        return list(FAMILIES[(domain, _DEFAULT_FAMILY[domain])])
+
+    def reset(self, domain: str, goal: str) -> None:
+        self.plan = self._plan(domain, goal)
+        self.i = 0
+        self.retries_here = 0
+
+    def next_tool(self, history: list[tuple[str, bool]]) -> str | None:
+        if (history and not history[-1][1] and self.recovery
+                and self.recovery.retry
+                and self.retries_here < self.recovery.max_retries):
+            self.retries_here += 1
+            return history[-1][0]                 # retry the failed tool
+        self.retries_here = 0
+        if self.i >= len(self.plan):
+            return None
+        tool = self.plan[self.i]
+        self.i += 1
+        return tool
+
+
+class BaselinePolicy(PlanPolicy):
+    """Memoryless AND recovery-blind: default plan, never retries."""
+    name = "baseline"
+
+    def __init__(self):
+        super().__init__(recovery=None)
+
+
+class LearnedPolicy(PlanPolicy):
+    """The full trajectory-learned agent: plans retrieved from experience,
+    recovery rule mined from experience."""
+    name = "trajectory-learned"
+
+    def __init__(self, memory: TrajectoryMemory, recovery=None, k: int = 5):
+        super().__init__(recovery=recovery)
+        self.memory = memory
+        self.k = k
+
+    def _plan(self, domain: str, goal: str) -> list[str]:
+        plan = consensus_plan(self.memory, domain, goal, k=self.k)
+        return plan if plan is not None else super()._plan(domain, goal)
+
+
+def ablation_policies(memory: TrajectoryMemory, recovery, k: int = 5) -> dict:
+    """name -> policy, the 2x2 grid of (plans, recovery)."""
+    return {
+        "baseline": BaselinePolicy(),
+        "+plans": LearnedPolicy(memory, recovery=None, k=k),
+        "+recovery": PlanPolicy(recovery=recovery),
+        "learned (full)": LearnedPolicy(memory, recovery=recovery, k=k),
+    }
