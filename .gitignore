@@ -58,3 +58,8 @@ build/
 
 # model-onramp runtime state (manifests, history, events)
 .onramp/
+
+# agentskill generated artifacts
+trajectories.jsonl
+sft.jsonl
+agentskill_metrics.json
