@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# Fast, deterministic checks on every push/PR. The LIVE eval-gate (a real arms
+# campaign, which trains models and takes ~an hour) runs on a schedule instead —
+# see eval-gate.yml. The unit tests here already cover the objective's scoring
+# and its comparability invariants (tests/test_objective.py), so a regression in
+# the gate logic itself is caught per-PR without training anything.
 jobs:
   test:
     runs-on: ubuntu-latest

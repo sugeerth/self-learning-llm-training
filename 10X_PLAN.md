@@ -23,6 +23,13 @@ are commentary, not a control system. Everything here serves that one claim.
   10% share) + a self-perplexity gate: +0.69% → +0.67% → **+0.49%** — flat, a small
   constant tax instead of compounding decay. Constant-share self-training is stable;
   single-shot mixing remains neutral (mix@5% −0.24%, mix@18% +0.06%).
+- **A breeding arm now exists — genealogy shows selection working.** `evolve.py` adds
+  a genetic arm: crossover+mutation of the winners, offspring pre-screened by the
+  CheapPrior surrogate (fuses the harness + prior pillars). A real 10-generation,
+  33-genome run halved best val ppl vs the random generation 0 (745 → 375);
+  `evolve_viz.py` renders the genealogy + config-space drift. It plugs into `arms.py`
+  under the same regret metric, so "does breeding beat sampling?" is now a measurable
+  head-to-head (no API key needed, unlike the agent arm).
 - **The agent arm is untested.** `arms.py` supports it but needs an `ANTHROPIC_API_KEY`.
   The core thesis of the repo has not yet been measured.
 - **Measure carefully or be fooled.** Two real bugs found only because we benchmarked:
@@ -41,7 +48,11 @@ are commentary, not a control system. Everything here serves that one claim.
 3. ~~Wire in the flywheel.~~ **Done, collapse lever found** — `flywheel.py run` (single-shot
    A/B) and `flywheel.py generations --mode accumulate|replace [--ppl-gate]` (iterated).
    Replace mode + ppl gate flattens the collapse curve (+1.15% → +0.49% at G3).
-4. **Feed human-queue decisions back** into the Judge prompt; track Judge–human agreement
+4. **Settle the evolve vs random head-to-head** (`arms.py run`, ≥3 seeds). The genealogy
+   proves selection improves the population; the open question is whether bred+screened
+   genomes reach random's final quality in fewer steps than uniform draws. This is
+   measurable today without any API key — the cheapest test of "is the search smart?".
+5. **Feed human-queue decisions back** into the Judge prompt; track Judge–human agreement
    over time.
 
 **Success bar:** agent arm reaches random's final quality in ≥2x fewer steps, reproducibly
